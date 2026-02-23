@@ -12,6 +12,7 @@ spring:
 dropship:
   sandbox-org: test-org
   sandbox-space: test-space
+  cf-api-url: https://api.test.cf.example.com
   max-task-memory-mb: 2048
   max-task-disk-mb: 4096
   max-task-timeout-seconds: 900

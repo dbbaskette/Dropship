@@ -1,0 +1,25 @@
+# ---------------------------------------------------------------
+# Profile: local
+# Activate: --spring.profiles.active=local
+#
+# Purpose: Local development with STDIO transport for direct
+#          MCP client integration (e.g., Claude Code CLI).
+#          Uses console logging with human-readable formatting.
+#
+# Note:    The default profile (no activation) uses Streamable
+#          HTTP transport, suitable for browser-based or HTTP
+#          MCP clients during local development.
+# ---------------------------------------------------------------
+
+spring:
+  ai:
+    mcp:
+      server:
+        protocol: STDIO
+        type: SYNC
+
+logging:
+  level:
+    com.baskette.dropship: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

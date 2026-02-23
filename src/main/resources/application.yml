@@ -12,6 +12,7 @@ spring:
 dropship:
   sandbox-org: ${DROPSHIP_SANDBOX_ORG:}
   sandbox-space: ${DROPSHIP_SANDBOX_SPACE:}
+  cf-api-url: ${CF_API_URL:}
   max-task-memory-mb: 2048
   max-task-disk-mb: 4096
   max-task-timeout-seconds: 900
