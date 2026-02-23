@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.4.3</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.baskette</groupId>
+    <artifactId>dropship</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>Dropship MCP Server</name>
+    <description>Enterprise-governed code execution for AI agents via Cloud Foundry</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <spring-ai.version>1.1.2</spring-ai.version>
+        <cf-java-client.version>5.16.0.RELEASE</cf-java-client.version>
+        <mcp-annotations.version>0.8.0</mcp-annotations.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Spring AI MCP Server (WebFlux-based, Streamable HTTP transport) -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webflux</artifactId>
+        </dependency>
+
+        <!-- Community MCP annotations for @McpTool, @McpParam -->
+        <dependency>
+            <groupId>org.springaicommunity</groupId>
+            <artifactId>mcp-annotations</artifactId>
+            <version>${mcp-annotations.version}</version>
+        </dependency>
+
+        <!-- Cloud Foundry Java Client (reactive) -->
+        <dependency>
+            <groupId>org.cloudfoundry</groupId>
+            <artifactId>cloudfoundry-client-reactor</artifactId>
+            <version>${cf-java-client.version}</version>
+            <exclusions>
+                <!-- Exclude transitive Reactor Netty to avoid conflicts with Spring Boot 3.4.x -->
+                <exclusion>
+                    <groupId>io.projectreactor.netty</groupId>
+                    <artifactId>reactor-netty</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.projectreactor.netty</groupId>
+                    <artifactId>reactor-netty-http</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- Cloud Foundry high-level operations -->
+        <dependency>
+            <groupId>org.cloudfoundry</groupId>
+            <artifactId>cloudfoundry-operations</artifactId>
+            <version>${cf-java-client.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.projectreactor.netty</groupId>
+                    <artifactId>reactor-netty</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.projectreactor.netty</groupId>
+                    <artifactId>reactor-netty-http</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
