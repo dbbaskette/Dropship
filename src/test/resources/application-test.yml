@@ -10,8 +10,8 @@ spring:
           enabled: true
 
 dropship:
-  sandbox-org: ${DROPSHIP_SANDBOX_ORG:}
-  sandbox-space: ${DROPSHIP_SANDBOX_SPACE:}
+  sandbox-org: test-org
+  sandbox-space: test-space
   max-task-memory-mb: 2048
   max-task-disk-mb: 4096
   max-task-timeout-seconds: 900
