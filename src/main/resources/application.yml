@@ -1,0 +1,10 @@
+spring:
+  ai:
+    mcp:
+      server:
+        name: dropship
+        version: 0.1.0
+        protocol: STREAMABLE
+        type: SYNC
+        annotation-scanner:
+          enabled: true
