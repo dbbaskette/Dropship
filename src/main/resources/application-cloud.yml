@@ -1,0 +1,28 @@
+# ---------------------------------------------------------------
+# Profile: cloud
+# Activate: Auto-activated by Spring Boot when the
+#           VCAP_APPLICATION environment variable is detected
+#           (Cloud Foundry deployment).
+#
+# Purpose: Production configuration for Cloud Foundry deployment.
+#          Reads CF API URL from platform-injected VCAP metadata.
+#          Uses structured JSON logging for log aggregation
+#          pipelines (Loggregator -> Splunk/ELK/Datadog).
+# ---------------------------------------------------------------
+
+spring:
+  ai:
+    mcp:
+      server:
+        protocol: STREAMABLE
+        type: SYNC
+
+dropship:
+  cf-api-url: ${vcap.application.cf_api:}
+
+logging:
+  level:
+    com.baskette.dropship: INFO
+    root: WARN
+  pattern:
+    console: "{\"timestamp\":\"%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}\",\"level\":\"%level\",\"logger\":\"%logger\",\"message\":\"%msg\"}%n"

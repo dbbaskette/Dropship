@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record DropshipProperties(
         String sandboxOrg,
         String sandboxSpace,
+        String cfApiUrl,
         int maxTaskMemoryMb,
         int maxTaskDiskMb,
         int maxTaskTimeoutSeconds,

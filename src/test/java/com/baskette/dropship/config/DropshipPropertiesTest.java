@@ -18,6 +18,7 @@ class DropshipPropertiesTest {
     void propertiesArePopulatedFromYaml() {
         assertThat(properties.sandboxOrg()).isEqualTo("test-org");
         assertThat(properties.sandboxSpace()).isEqualTo("test-space");
+        assertThat(properties.cfApiUrl()).isEqualTo("https://api.test.cf.example.com");
     }
 
     @Test
