@@ -9,6 +9,11 @@ spring:
         annotation-scanner:
           enabled: true
 
+cf:
+  client-id: test-client-id
+  client-secret: test-client-secret
+  skip-ssl-validation: true
+
 dropship:
   sandbox-org: test-org
   sandbox-space: test-space
