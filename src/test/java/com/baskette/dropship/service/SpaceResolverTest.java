@@ -14,6 +14,8 @@ import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
@@ -24,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,6 +41,12 @@ class SpaceResolverTest {
 
     @Mock
     private SpacesV3 spacesV3;
+
+    @Captor
+    private ArgumentCaptor<ListOrganizationsRequest> orgRequestCaptor;
+
+    @Captor
+    private ArgumentCaptor<ListSpacesRequest> spaceRequestCaptor;
 
     private DropshipProperties properties;
     private SpaceResolver spaceResolver;
@@ -76,8 +85,13 @@ class SpaceResolverTest {
         spaceResolver.resolve();
 
         assertThat(spaceResolver.getSpaceGuid()).isEqualTo("space-guid-456");
-        verify(cloudFoundryClient).organizationsV3();
-        verify(cloudFoundryClient).spacesV3();
+
+        verify(organizationsV3).list(orgRequestCaptor.capture());
+        assertThat(orgRequestCaptor.getValue().getNames()).containsExactly("test-org");
+
+        verify(spacesV3).list(spaceRequestCaptor.capture());
+        assertThat(spaceRequestCaptor.getValue().getOrganizationIds()).containsExactly("org-guid-123");
+        assertThat(spaceRequestCaptor.getValue().getNames()).containsExactly("test-space");
     }
 
     @Test
@@ -135,6 +149,45 @@ class SpaceResolverTest {
         assertThatThrownBy(() -> spaceResolver.getSpaceGuid())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("not been resolved");
+    }
+
+    @Test
+    void reResolvesAfterConnectionFailure() {
+        // First call fails with connection error
+        when(cloudFoundryClient.organizationsV3()).thenReturn(organizationsV3);
+        when(organizationsV3.list(any(ListOrganizationsRequest.class)))
+                .thenReturn(Mono.error(new RuntimeException("Connection refused")));
+
+        spaceResolver.resolve();
+
+        assertThatThrownBy(() -> spaceResolver.getSpaceGuid())
+                .isInstanceOf(IllegalStateException.class);
+
+        // Second call succeeds
+        reset(organizationsV3);
+        when(organizationsV3.list(any(ListOrganizationsRequest.class)))
+                .thenReturn(Mono.just(ListOrganizationsResponse.builder()
+                        .resource(OrganizationResource.builder()
+                                .id("org-guid-123")
+                                .name("test-org")
+                                .createdAt("2024-01-01T00:00:00Z")
+                                .metadata(Metadata.builder().build())
+                                .build())
+                        .build()));
+
+        when(cloudFoundryClient.spacesV3()).thenReturn(spacesV3);
+        when(spacesV3.list(any(ListSpacesRequest.class)))
+                .thenReturn(Mono.just(ListSpacesResponse.builder()
+                        .resource(SpaceResource.builder()
+                                .id("space-guid-456")
+                                .name("test-space")
+                                .createdAt("2024-01-01T00:00:00Z")
+                                .build())
+                        .build()));
+
+        spaceResolver.resolve();
+
+        assertThat(spaceResolver.getSpaceGuid()).isEqualTo("space-guid-456");
     }
 
     @Test
