@@ -2,7 +2,11 @@ package com.baskette.dropship.service;
 
 import com.baskette.dropship.config.DropshipProperties;
 import com.baskette.dropship.model.StagingResult;
+import org.cloudfoundry.client.v3.BuildpackData;
+import org.cloudfoundry.client.v3.Lifecycle;
+import org.cloudfoundry.client.v3.LifecycleType;
 import org.cloudfoundry.client.v3.Relationship;
+import org.cloudfoundry.client.v3.applications.ApplicationState;
 import org.cloudfoundry.client.v3.applications.ApplicationsV3;
 import org.cloudfoundry.client.v3.applications.CreateApplicationRequest;
 import org.cloudfoundry.client.v3.applications.CreateApplicationResponse;
@@ -10,6 +14,7 @@ import org.cloudfoundry.client.v3.builds.BuildState;
 import org.cloudfoundry.client.v3.builds.Builds;
 import org.cloudfoundry.client.v3.builds.CreateBuildRequest;
 import org.cloudfoundry.client.v3.builds.CreateBuildResponse;
+import org.cloudfoundry.client.v3.builds.CreatedBy;
 import org.cloudfoundry.client.v3.builds.Droplet;
 import org.cloudfoundry.client.v3.builds.GetBuildRequest;
 import org.cloudfoundry.client.v3.builds.GetBuildResponse;
@@ -31,6 +36,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -38,6 +45,17 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class StagingServiceTest {
+
+    private static final Lifecycle BUILDPACK_LIFECYCLE = Lifecycle.builder()
+            .type(LifecycleType.BUILDPACK)
+            .data(BuildpackData.builder().build())
+            .build();
+
+    private static final CreatedBy TEST_CREATED_BY = CreatedBy.builder()
+            .id("user-guid")
+            .name("test-user")
+            .email("test@example.com")
+            .build();
 
     @Mock
     private ReactorCloudFoundryClient cfClient;
@@ -82,6 +100,8 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(CreateApplicationResponse.builder()
                         .id("app-guid-456")
                         .name("dropship-abc12345")
+                        .state(ApplicationState.STOPPED)
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .updatedAt("2024-01-01T00:00:00Z")
                         .build()));
@@ -135,6 +155,9 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(CreateBuildResponse.builder()
                         .id("build-guid-101")
                         .state(BuildState.STAGING)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
@@ -156,6 +179,9 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(CreateBuildResponse.builder()
                         .id("build-guid-102")
                         .state(BuildState.STAGING)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
@@ -174,6 +200,9 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(GetBuildResponse.builder()
                         .id("build-guid-101")
                         .state(BuildState.STAGED)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .droplet(Droplet.builder()
                                 .id("droplet-guid-201")
@@ -196,6 +225,9 @@ class StagingServiceTest {
                         .id("build-guid-101")
                         .state(BuildState.FAILED)
                         .error("Buildpack compilation failed")
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
@@ -214,16 +246,25 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(GetBuildResponse.builder()
                         .id("build-guid-101")
                         .state(BuildState.STAGING)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()))
                 .thenReturn(Mono.just(GetBuildResponse.builder()
                         .id("build-guid-101")
                         .state(BuildState.STAGING)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()))
                 .thenReturn(Mono.just(GetBuildResponse.builder()
                         .id("build-guid-101")
                         .state(BuildState.STAGED)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .droplet(Droplet.builder()
                                 .id("droplet-guid-201")
@@ -246,6 +287,8 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(CreateApplicationResponse.builder()
                         .id("app-guid-456")
                         .name("dropship-abc12345")
+                        .state(ApplicationState.STOPPED)
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .updatedAt("2024-01-01T00:00:00Z")
                         .build()));
@@ -271,12 +314,18 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(CreateBuildResponse.builder()
                         .id("build-guid-101")
                         .state(BuildState.STAGING)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
         when(builds.get(any(GetBuildRequest.class)))
                 .thenReturn(Mono.just(GetBuildResponse.builder()
                         .id("build-guid-101")
                         .state(BuildState.STAGED)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .droplet(Droplet.builder()
                                 .id("droplet-guid-201")
@@ -304,6 +353,8 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(CreateApplicationResponse.builder()
                         .id("app-guid-456")
                         .name("dropship-abc12345")
+                        .state(ApplicationState.STOPPED)
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .updatedAt("2024-01-01T00:00:00Z")
                         .build()));
@@ -329,6 +380,9 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(CreateBuildResponse.builder()
                         .id("build-guid-101")
                         .state(BuildState.STAGING)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
         when(builds.get(any(GetBuildRequest.class)))
@@ -336,6 +390,9 @@ class StagingServiceTest {
                         .id("build-guid-101")
                         .state(BuildState.FAILED)
                         .error("Buildpack compilation failed")
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
@@ -374,6 +431,8 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(CreateApplicationResponse.builder()
                         .id("app-guid-456")
                         .name("dropship-abc12345")
+                        .state(ApplicationState.STOPPED)
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .updatedAt("2024-01-01T00:00:00Z")
                         .build()));
@@ -399,12 +458,18 @@ class StagingServiceTest {
                 .thenReturn(Mono.just(CreateBuildResponse.builder()
                         .id("build-guid-101")
                         .state(BuildState.STAGING)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
         when(builds.get(any(GetBuildRequest.class)))
                 .thenReturn(Mono.just(GetBuildResponse.builder()
                         .id("build-guid-101")
                         .state(BuildState.STAGED)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
                         .createdAt("2024-01-01T00:00:00Z")
                         .droplet(Droplet.builder()
                                 .id("droplet-guid-201")
@@ -421,5 +486,65 @@ class StagingServiceTest {
 
         verify(builds).create(buildRequestCaptor.capture());
         assertThat(buildRequestCaptor.getValue().getLifecycle()).isNull();
+    }
+
+    @Test
+    void stageReturnsTimeoutErrorWhenBuildNeverCompletes() {
+        when(spaceResolver.getSpaceGuid()).thenReturn("space-guid-123");
+        when(cfClient.applicationsV3()).thenReturn(applicationsV3);
+        when(applicationsV3.create(any(CreateApplicationRequest.class)))
+                .thenReturn(Mono.just(CreateApplicationResponse.builder()
+                        .id("app-guid-456")
+                        .name("dropship-abc12345")
+                        .state(ApplicationState.STOPPED)
+                        .lifecycle(BUILDPACK_LIFECYCLE)
+                        .createdAt("2024-01-01T00:00:00Z")
+                        .updatedAt("2024-01-01T00:00:00Z")
+                        .build()));
+
+        when(cfClient.packages()).thenReturn(packages);
+        when(packages.create(any(CreatePackageRequest.class)))
+                .thenReturn(Mono.just(CreatePackageResponse.builder()
+                        .id("package-guid-789")
+                        .type(PackageType.BITS)
+                        .state(PackageState.AWAITING_UPLOAD)
+                        .createdAt("2024-01-01T00:00:00Z")
+                        .build()));
+        when(packages.upload(any(UploadPackageRequest.class)))
+                .thenReturn(Mono.just(UploadPackageResponse.builder()
+                        .id("package-guid-789")
+                        .type(PackageType.BITS)
+                        .state(PackageState.PROCESSING_UPLOAD)
+                        .createdAt("2024-01-01T00:00:00Z")
+                        .build()));
+
+        when(cfClient.builds()).thenReturn(builds);
+        when(builds.create(any(CreateBuildRequest.class)))
+                .thenReturn(Mono.just(CreateBuildResponse.builder()
+                        .id("build-guid-101")
+                        .state(BuildState.STAGING)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
+                        .createdAt("2024-01-01T00:00:00Z")
+                        .build()));
+        when(builds.get(any(GetBuildRequest.class)))
+                .thenReturn(Mono.just(GetBuildResponse.builder()
+                        .id("build-guid-101")
+                        .state(BuildState.STAGING)
+                        .createdBy(TEST_CREATED_BY)
+                        .inputPackage(Relationship.builder().id("package-guid-789").build())
+                        .lifecycle(BUILDPACK_LIFECYCLE)
+                        .createdAt("2024-01-01T00:00:00Z")
+                        .build()));
+
+        StepVerifier.withVirtualTime(() -> stagingService.stage(
+                        "test source".getBytes(), "java_buildpack", 512, 1024))
+                .thenAwait(Duration.ofMinutes(6))
+                .assertNext(result -> {
+                    assertThat(result.success()).isFalse();
+                    assertThat(result.errorMessage()).contains("timed out");
+                })
+                .verifyComplete();
     }
 }
