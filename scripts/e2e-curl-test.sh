@@ -13,6 +13,9 @@
 # Usage:
 #   DROPSHIP_URL=https://dropship-mcp.apps.example.com/mcp ./scripts/e2e-curl-test.sh
 #
+#   # Show raw curl commands for documentation capture
+#   DROPSHIP_URL=https://dropship-mcp.apps.example.com/mcp ./scripts/e2e-curl-test.sh --verbose
+#
 # Environment variables:
 #   DROPSHIP_URL  (required) Full URL to the Dropship /mcp endpoint
 #   BUILDPACK     (optional) Buildpack to use, default: java_buildpack
@@ -27,7 +30,20 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 FIXTURE_DIR="$PROJECT_ROOT/src/test/resources/fixtures/hello-world"
 
 HEADER_FILE=$(mktemp)
-trap 'rm -f "$HEADER_FILE"' EXIT
+PAYLOAD_FILE=$(mktemp)
+trap 'rm -f "$HEADER_FILE" "$PAYLOAD_FILE"' EXIT
+
+START_TIME=$(date +%s)
+
+# --- Parse flags ---
+
+VERBOSE=false
+for arg in "$@"; do
+    case "$arg" in
+        --verbose|-v) VERBOSE=true ;;
+        *) echo "Unknown flag: $arg"; echo "Usage: $0 [--verbose]"; exit 1 ;;
+    esac
+done
 
 # --- Output helpers ---
 
@@ -35,6 +51,14 @@ pass() { printf '\033[0;32m  PASS: %s\033[0m\n' "$1"; }
 fail() { printf '\033[0;31m  FAIL: %s\033[0m\n' "$1"; exit 1; }
 info() { printf '\033[0;33m  >> %s\033[0m\n' "$1"; }
 step() { printf '\n\033[1;36m=== Step %s: %s ===\033[0m\n' "$1" "$2"; }
+
+# Print a raw curl command when --verbose is set.
+# Usage: show_curl "description" "curl command string"
+show_curl() {
+    if [ "$VERBOSE" = true ]; then
+        printf '\033[0;90m  $ %s\033[0m\n' "$1"
+    fi
+}
 
 # --- Helpers ---
 
@@ -92,6 +116,9 @@ done
 
 echo "Dropship E2E Curl Test"
 echo "Target: $DROPSHIP_URL"
+if [ "$VERBOSE" = true ]; then
+    echo "Mode:   verbose (raw curl commands shown)"
+fi
 echo ""
 
 # ============================================================
@@ -100,6 +127,8 @@ echo ""
 step 1 "Initialize MCP session"
 
 info "POST initialize request"
+show_curl "curl -sS -D headers.txt $DROPSHIP_URL -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"e2e-curl-test\",\"version\":\"1.0\"}}}'"
+
 INIT_RAW=$(curl -sS -D "$HEADER_FILE" "$DROPSHIP_URL" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
@@ -122,6 +151,8 @@ MCP_SESSION=$(grep -i 'mcp-session-id' "$HEADER_FILE" | tr -d '\r' | awk -F': ' 
 pass "Session ID: $MCP_SESSION"
 
 info "POST notifications/initialized"
+show_curl "curl -sS $DROPSHIP_URL -H 'Content-Type: application/json' -H 'Mcp-Session-Id: $MCP_SESSION' -d '{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}'"
+
 curl -sS "$DROPSHIP_URL" \
     -H "Content-Type: application/json" \
     -H "Mcp-Session-Id: $MCP_SESSION" \
@@ -135,6 +166,8 @@ step 2 "Prepare source bundle"
 
 [ -d "$FIXTURE_DIR" ] || fail "Fixture directory not found: $FIXTURE_DIR"
 
+show_curl "tar czf - -C $FIXTURE_DIR . | base64"
+
 SOURCE_BUNDLE=$(tar czf - -C "$FIXTURE_DIR" . | base64)
 BUNDLE_SIZE=$(printf '%s' "$SOURCE_BUNDLE" | wc -c | tr -d ' ')
 pass "Source bundle: $BUNDLE_SIZE base64 chars from $FIXTURE_DIR"
@@ -147,9 +180,6 @@ step 3 "stage_code"
 info "Calling stage_code (buildpack=$BUILDPACK) — this may take several minutes"
 
 # Build the JSON payload (sourceBundle can be large, so use a temp file)
-PAYLOAD_FILE=$(mktemp)
-trap 'rm -f "$HEADER_FILE" "$PAYLOAD_FILE"' EXIT
-
 jq -n \
     --arg bundle "$SOURCE_BUNDLE" \
     --arg bp "$BUILDPACK" \
@@ -166,6 +196,8 @@ jq -n \
         }
     }' > "$PAYLOAD_FILE"
 
+show_curl "curl -sS $DROPSHIP_URL -H 'Content-Type: application/json' -H 'Mcp-Session-Id: \$MCP_SESSION' --max-time 420 -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"stage_code\",\"arguments\":{\"sourceBundle\":\"<base64>\",\"buildpack\":\"$BUILDPACK\"}}}'"
+
 STAGE_RAW=$(curl -sS "$DROPSHIP_URL" \
     -H "Content-Type: application/json" \
     -H "Mcp-Session-Id: $MCP_SESSION" \
@@ -178,6 +210,7 @@ STAGE_RESULT=$(extract_tool_result "$STAGE_JSON")
 SUCCESS=$(printf '%s' "$STAGE_RESULT" | jq -r '.success')
 DROPLET_GUID=$(printf '%s' "$STAGE_RESULT" | jq -r '.dropletGuid')
 APP_GUID=$(printf '%s' "$STAGE_RESULT" | jq -r '.appGuid')
+STAGE_BUILDPACK=$(printf '%s' "$STAGE_RESULT" | jq -r '.buildpack // empty')
 DURATION_MS=$(printf '%s' "$STAGE_RESULT" | jq -r '.durationMs')
 
 [ "$SUCCESS" = "true" ] || fail "stage_code: success=$SUCCESS (expected true). Result: $(printf '%s' "$STAGE_RESULT" | jq -c .)"
@@ -185,6 +218,9 @@ DURATION_MS=$(printf '%s' "$STAGE_RESULT" | jq -r '.durationMs')
 [ "$APP_GUID" != "null" ] && [ -n "$APP_GUID" ] || fail "stage_code: appGuid is null or missing"
 
 pass "success=true, dropletGuid=$DROPLET_GUID, appGuid=$APP_GUID, duration=${DURATION_MS}ms"
+if [ -n "$STAGE_BUILDPACK" ]; then
+    info "Buildpack used: $STAGE_BUILDPACK"
+fi
 
 # ============================================================
 # Step 4: run_task
@@ -192,6 +228,7 @@ pass "success=true, dropletGuid=$DROPLET_GUID, appGuid=$APP_GUID, duration=${DUR
 step 4 "run_task"
 
 info "Calling run_task (command='java -jar hello.jar')"
+show_curl "curl -sS $DROPSHIP_URL -H 'Content-Type: application/json' -H 'Mcp-Session-Id: \$MCP_SESSION' --max-time 360 -d '{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"run_task\",\"arguments\":{\"appGuid\":\"$APP_GUID\",\"dropletGuid\":\"$DROPLET_GUID\",\"command\":\"java -jar hello.jar\"}}}'"
 
 TASK_RAW=$(curl -sS "$DROPSHIP_URL" \
     -H "Content-Type: application/json" \
@@ -221,12 +258,16 @@ STATE=$(printf '%s' "$TASK_RESULT" | jq -r '.state')
 EXIT_CODE=$(printf '%s' "$TASK_RESULT" | jq -r '.exitCode')
 TASK_GUID=$(printf '%s' "$TASK_RESULT" | jq -r '.taskGuid')
 TASK_DURATION=$(printf '%s' "$TASK_RESULT" | jq -r '.durationMs')
+TASK_MEMORY=$(printf '%s' "$TASK_RESULT" | jq -r '.memoryMb // empty')
 
 [ "$STATE" = "SUCCEEDED" ] || fail "run_task: state=$STATE (expected SUCCEEDED). Result: $(printf '%s' "$TASK_RESULT" | jq -c .)"
 [ "$EXIT_CODE" = "0" ] || fail "run_task: exitCode=$EXIT_CODE (expected 0)"
 [ "$TASK_GUID" != "null" ] && [ -n "$TASK_GUID" ] || fail "run_task: taskGuid is null or missing"
 
 pass "state=SUCCEEDED, exitCode=0, taskGuid=$TASK_GUID, duration=${TASK_DURATION}ms"
+if [ -n "$TASK_MEMORY" ]; then
+    info "Container memory: ${TASK_MEMORY}MB"
+fi
 
 # ============================================================
 # Step 5: get_task_logs
@@ -239,6 +280,7 @@ APP_NAME=$(lookup_app_name "$APP_GUID")
 info "App name: $APP_NAME"
 
 info "Calling get_task_logs"
+show_curl "curl -sS $DROPSHIP_URL -H 'Content-Type: application/json' -H 'Mcp-Session-Id: \$MCP_SESSION' --max-time 30 -d '{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"get_task_logs\",\"arguments\":{\"taskGuid\":\"$TASK_GUID\",\"appName\":\"$APP_NAME\"}}}'"
 
 LOGS_RAW=$(curl -sS "$DROPSHIP_URL" \
     -H "Content-Type: application/json" \
@@ -265,24 +307,30 @@ LOGS_RESULT=$(extract_tool_result "$LOGS_JSON")
 
 TOTAL_LINES=$(printf '%s' "$LOGS_RESULT" | jq -r '.totalLines')
 HAS_ENTRIES=$(printf '%s' "$LOGS_RESULT" | jq -r '.entries | length > 0')
+TRUNCATED=$(printf '%s' "$LOGS_RESULT" | jq -r '.truncated // false')
 
 [ "$HAS_ENTRIES" = "true" ] || fail "get_task_logs: entries is empty"
 
 CONTAINS_HELLO=$(printf '%s' "$LOGS_RESULT" | jq -r '[.entries[].message] | any(contains("Hello, Dropship!"))')
 [ "$CONTAINS_HELLO" = "true" ] || fail "get_task_logs: log entries do not contain 'Hello, Dropship!'"
 
-pass "totalLines=$TOTAL_LINES, contains 'Hello, Dropship!' output"
+pass "totalLines=$TOTAL_LINES, truncated=$TRUNCATED, contains 'Hello, Dropship!' output"
 
 # ============================================================
 # Summary
 # ============================================================
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+
 echo ""
 echo "========================================"
 printf '\033[1;32m  ALL CHECKS PASSED\033[0m\n'
 echo "========================================"
 echo ""
 echo "Results:"
-echo "  stage_code  : dropletGuid=$DROPLET_GUID  (${DURATION_MS}ms)"
-echo "  run_task    : taskGuid=$TASK_GUID  exitCode=0  (${TASK_DURATION}ms)"
+echo "  stage_code   : dropletGuid=$DROPLET_GUID  (${DURATION_MS}ms)"
+echo "  run_task     : taskGuid=$TASK_GUID  exitCode=0  (${TASK_DURATION}ms)"
 echo "  get_task_logs: $TOTAL_LINES log lines, output verified"
+echo ""
+echo "Total elapsed: ${ELAPSED}s"
 echo ""
