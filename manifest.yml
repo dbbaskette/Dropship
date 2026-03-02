@@ -14,6 +14,19 @@ applications:
       JBP_CONFIG_OPEN_JDK_JRE: '{ jre: { version: 21.+ } }'
       SPRING_PROFILES_ACTIVE: cloud
       # ------------------------------------------------------------------
+      # CF UAA client credentials (required).
+      # Set these via `cf set-env` or a vars file — do not commit secrets.
+      # ------------------------------------------------------------------
+      CF_CLIENT_ID: ((cf-client-id))
+      CF_CLIENT_SECRET: ((cf-client-secret))
+      # ------------------------------------------------------------------
+      # CF API URL.  The cloud profile auto-detects this from
+      # VCAP_APPLICATION, so this env var acts as an explicit override.
+      # Set it when pushing to a foundation where VCAP metadata is
+      # unavailable or when running locally with the cloud profile.
+      # ------------------------------------------------------------------
+      CF_API_URL: ((cf-api-url))
+      # ------------------------------------------------------------------
       # Sandbox org/space where Dropship pushes and runs agent workloads.
       # Override these per environment (e.g., cf set-env or vars file).
       # ------------------------------------------------------------------

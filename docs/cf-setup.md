@@ -300,6 +300,65 @@ If you see `Unable to resolve space GUID`, check that:
 
 ---
 
+## 8. Deployment Pre-Flight Checklist
+
+Run through this checklist before every `cf push` to catch common deployment issues
+early.
+
+### Build
+
+- [ ] `mvn clean package -DskipTests` completes without errors
+- [ ] `target/dropship-0.1.0-SNAPSHOT.jar` exists and is a valid Spring Boot fat JAR
+- [ ] `manifest.yml` `path:` matches the JAR filename above
+
+### Manifest Environment Variables
+
+Verify all required env vars are set (via manifest, `cf set-env`, or a vars file):
+
+| Variable | Required | Notes |
+|---|---|---|
+| `CF_CLIENT_ID` | Yes | UAA client ID from Step 1 |
+| `CF_CLIENT_SECRET` | Yes | UAA client secret from Step 1 |
+| `CF_API_URL` | Recommended | Auto-detected from VCAP on CF, but set explicitly as a fallback |
+| `DROPSHIP_SANDBOX_ORG` | Yes | Must match an existing CF org |
+| `DROPSHIP_SANDBOX_SPACE` | Yes | Must match an existing CF space in the org above |
+| `SPRING_PROFILES_ACTIVE` | Yes | Must be `cloud` for CF deployments |
+| `CF_SKIP_SSL_VALIDATION` | No | Defaults to `false`; set `true` only for dev foundations with self-signed certs |
+
+### Cloud Foundry Prerequisites
+
+- [ ] Target foundation is reachable: `cf api $CF_API_URL`
+- [ ] UAA client exists and can authenticate: `uaac token client get $CF_CLIENT_ID -s $CF_CLIENT_SECRET`
+- [ ] Sandbox org exists: `cf org $DROPSHIP_SANDBOX_ORG`
+- [ ] Sandbox space exists: `cf space $DROPSHIP_SANDBOX_SPACE`
+- [ ] Space quota is assigned (see Step 3)
+- [ ] ASGs are configured for the sandbox space (see Step 5)
+
+### Health Check
+
+The manifest uses `health-check-type: http` with endpoint `/actuator/health`.
+After pushing, verify:
+
+```bash
+cf app dropship-mcp
+# status should be "running"
+
+curl https://dropship-mcp.<apps-domain>/actuator/health
+# should return {"status":"UP"} or similar
+```
+
+If the app starts but the health check fails, check that:
+1. The `cloud` profile activated (look for JSON-formatted log lines)
+2. CF credentials are valid (look for `Dropship connected to CF` in logs)
+3. The `/actuator/health` endpoint is accessible (not blocked by route config)
+
+> **Note:** `CloudFoundryHealthCheck` runs on `ApplicationReadyEvent`. If CF
+> credentials are missing or invalid the app will still start but log a warning.
+> The HTTP health check at `/actuator/health` will pass regardless, so monitor
+> logs after the first push to confirm CF connectivity.
+
+---
+
 ## Quick Reference
 
 ```bash
