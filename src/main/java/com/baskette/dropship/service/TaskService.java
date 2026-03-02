@@ -92,9 +92,11 @@ public class TaskService {
                 .then(createTask(appGuid, command, memoryMb, null, timeoutSeconds, environment))
                 .flatMap(this::pollTask)
                 .map(taskResponse -> toTaskResult(taskResponse, appGuid, command, startTime))
+                .onErrorResume(error -> Mono.just(
+                        toErrorResult(appGuid, command, startTime, error)))
                 .timeout(Duration.ofSeconds(properties.maxTaskTimeoutSeconds()))
                 .onErrorResume(error -> {
-                    log.error("Task failed for appGuid={}: {}", appGuid, error.getMessage());
+                    log.error("Task timed out for appGuid={}: {}", appGuid, error.getMessage());
                     long duration = System.currentTimeMillis() - startTime;
                     return Mono.just(new TaskResult(
                             null, appGuid, 1, TaskResult.State.FAILED,
@@ -137,6 +139,15 @@ public class TaskService {
                 response.getId(), appGuid,
                 state == TaskResult.State.SUCCEEDED ? 0 : 1,
                 state, duration, memoryMb, command);
+    }
+
+    private TaskResult toErrorResult(String appGuid, String command,
+                                      long startTime, Throwable error) {
+        long duration = System.currentTimeMillis() - startTime;
+        log.error("Task error: appGuid={}, error={}", appGuid, error.getMessage());
+        return new TaskResult(
+                null, appGuid, 1, TaskResult.State.FAILED,
+                duration, 0, command);
     }
 
     static class TaskInProgressException extends RuntimeException {
