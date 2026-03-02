@@ -18,7 +18,7 @@ spring:
         type: SYNC
 
 dropship:
-  cf-api-url: ${vcap.application.cf_api:}
+  cf-api-url: ${vcap.application.cf_api:${CF_API_URL:}}
 
 logging:
   level:

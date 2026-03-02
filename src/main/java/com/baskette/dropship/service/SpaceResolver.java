@@ -61,8 +61,6 @@ public class SpaceResolver {
             spaceGuid = spaceResponse.getResources().get(0).getId();
 
             log.info("Resolved space GUID: {} for org={}, space={}", spaceGuid, orgName, spaceName);
-        } catch (IllegalStateException e) {
-            throw e;
         } catch (Exception e) {
             log.warn("Unable to resolve space GUID for org={}, space={}: {}. "
                             + "Space GUID was not resolved at startup. "

@@ -52,6 +52,12 @@
             <version>${mcp-annotations.version}</version>
         </dependency>
 
+        <!-- Spring Boot Actuator — exposes /actuator/health for CF health checks -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Cloud Foundry Java Client (reactive) -->
         <dependency>
             <groupId>org.cloudfoundry</groupId>
