@@ -1,0 +1,35 @@
+---
+applications:
+  - name: dropship-mcp
+    memory: 512M
+    disk_quota: 1G
+    instances: 1
+    buildpacks:
+      - java_buildpack
+    path: target/dropship-0.1.0-SNAPSHOT.jar
+    health-check-type: http
+    health-check-http-endpoint: /actuator/health
+
+    env:
+      JBP_CONFIG_OPEN_JDK_JRE: '{ jre: { version: 21.+ } }'
+      SPRING_PROFILES_ACTIVE: cloud
+      # ------------------------------------------------------------------
+      # Sandbox org/space where Dropship pushes and runs agent workloads.
+      # Override these per environment (e.g., cf set-env or vars file).
+      # ------------------------------------------------------------------
+      DROPSHIP_SANDBOX_ORG: dropship-sandbox
+      DROPSHIP_SANDBOX_SPACE: dev
+
+    # ------------------------------------------------------------------
+    # Service bindings
+    # ------------------------------------------------------------------
+    # Uncomment the services block below once a UAA service instance has
+    # been created.  The bound credentials will be available via VCAP_SERVICES
+    # and can be referenced in application-cloud.yml.
+    #
+    # To create the service instance:
+    #   cf create-service p-identity standard dropship-uaa
+    #
+    # Then uncomment and push:
+    # services:
+    #   - dropship-uaa
