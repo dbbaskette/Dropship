@@ -204,6 +204,145 @@ class TaskServiceTest {
         assertThat(request.getDiskInMb()).isEqualTo(512);
     }
 
+    // --- pollTask tests ---
+
+    @Test
+    void pollTaskReturnsWhenSucceeded() {
+        when(cfClient.tasks()).thenReturn(tasks);
+        when(tasks.get(any(GetTaskRequest.class)))
+                .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.SUCCEEDED)));
+
+        StepVerifier.create(taskService.pollTask("task-guid-1"))
+                .assertNext(response -> {
+                    assertThat(response.getState()).isEqualTo(TaskState.SUCCEEDED);
+                    assertThat(response.getId()).isEqualTo("task-guid-1");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void pollTaskReturnsWhenFailed() {
+        when(cfClient.tasks()).thenReturn(tasks);
+        when(tasks.get(any(GetTaskRequest.class)))
+                .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.FAILED)));
+
+        StepVerifier.create(taskService.pollTask("task-guid-1"))
+                .assertNext(response -> {
+                    assertThat(response.getState()).isEqualTo(TaskState.FAILED);
+                    assertThat(response.getId()).isEqualTo("task-guid-1");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void pollTaskRetriesWhileRunning() {
+        when(cfClient.tasks()).thenReturn(tasks);
+        when(tasks.get(any(GetTaskRequest.class)))
+                .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.RUNNING)))
+                .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.RUNNING)))
+                .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.SUCCEEDED)));
+
+        StepVerifier.create(taskService.pollTask("task-guid-1"))
+                .assertNext(response -> {
+                    assertThat(response.getState()).isEqualTo(TaskState.SUCCEEDED);
+                    assertThat(response.getId()).isEqualTo("task-guid-1");
+                })
+                .expectComplete()
+                .verify(Duration.ofSeconds(15));
+    }
+
+    // --- runTask tests ---
+
+    @Test
+    void runTaskHappyPath() {
+        // Mock setCurrentDroplet chain
+        when(cfClient.applicationsV3()).thenReturn(applicationsV3);
+        when(applicationsV3.setCurrentDroplet(any(SetApplicationCurrentDropletRequest.class)))
+                .thenReturn(Mono.just(SetApplicationCurrentDropletResponse.builder()
+                        .data(Relationship.builder().id("droplet-guid-123").build())
+                        .build()));
+
+        // Mock createTask chain
+        when(cfClient.tasks()).thenReturn(tasks);
+        when(tasks.create(any(CreateTaskRequest.class)))
+                .thenReturn(Mono.just(createTaskResponse("task-guid-1")));
+
+        // Mock pollTask chain - task succeeds immediately
+        when(tasks.get(any(GetTaskRequest.class)))
+                .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.SUCCEEDED)));
+
+        StepVerifier.create(taskService.runTask(
+                        "app-guid-456", "droplet-guid-123", "echo hello",
+                        null, null, null))
+                .assertNext(result -> {
+                    assertThat(result.taskGuid()).isEqualTo("task-guid-1");
+                    assertThat(result.appGuid()).isEqualTo("app-guid-456");
+                    assertThat(result.exitCode()).isEqualTo(0);
+                    assertThat(result.state()).isEqualTo(TaskResult.State.SUCCEEDED);
+                    assertThat(result.command()).isEqualTo("echo hello");
+                    assertThat(result.durationMs()).isGreaterThanOrEqualTo(0);
+                })
+                .expectComplete()
+                .verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void runTaskReturnsFailureOnTaskFailed() {
+        // Mock setCurrentDroplet chain
+        when(cfClient.applicationsV3()).thenReturn(applicationsV3);
+        when(applicationsV3.setCurrentDroplet(any(SetApplicationCurrentDropletRequest.class)))
+                .thenReturn(Mono.just(SetApplicationCurrentDropletResponse.builder()
+                        .data(Relationship.builder().id("droplet-guid-123").build())
+                        .build()));
+
+        // Mock createTask chain
+        when(cfClient.tasks()).thenReturn(tasks);
+        when(tasks.create(any(CreateTaskRequest.class)))
+                .thenReturn(Mono.just(createTaskResponse("task-guid-1")));
+
+        // Mock pollTask chain - task fails
+        when(tasks.get(any(GetTaskRequest.class)))
+                .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.FAILED)));
+
+        StepVerifier.create(taskService.runTask(
+                        "app-guid-456", "droplet-guid-123", "bad-command",
+                        null, null, null))
+                .assertNext(result -> {
+                    assertThat(result.taskGuid()).isEqualTo("task-guid-1");
+                    assertThat(result.appGuid()).isEqualTo("app-guid-456");
+                    assertThat(result.exitCode()).isEqualTo(1);
+                    assertThat(result.state()).isEqualTo(TaskResult.State.FAILED);
+                    assertThat(result.command()).isEqualTo("bad-command");
+                })
+                .expectComplete()
+                .verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void runTaskReturnsErrorOnCfApiFailure() {
+        // Mock setCurrentDroplet throws error
+        when(cfClient.applicationsV3()).thenReturn(applicationsV3);
+        when(applicationsV3.setCurrentDroplet(any(SetApplicationCurrentDropletRequest.class)))
+                .thenReturn(Mono.error(new RuntimeException("CF API error")));
+
+        // Must also mock tasks() since createTask is eagerly assembled in runTask
+        when(cfClient.tasks()).thenReturn(tasks);
+        when(tasks.create(any(CreateTaskRequest.class)))
+                .thenReturn(Mono.just(createTaskResponse("task-guid-1")));
+
+        StepVerifier.create(taskService.runTask(
+                        "app-guid-456", "droplet-guid-123", "echo hello",
+                        null, null, null))
+                .assertNext(result -> {
+                    assertThat(result.state()).isEqualTo(TaskResult.State.FAILED);
+                    assertThat(result.exitCode()).isEqualTo(1);
+                    assertThat(result.appGuid()).isEqualTo("app-guid-456");
+                    assertThat(result.taskGuid()).isNull();
+                })
+                .expectComplete()
+                .verify(Duration.ofSeconds(10));
+    }
+
     // --- helpers ---
 
     private CreateTaskResponse createTaskResponse(String taskGuid) {
