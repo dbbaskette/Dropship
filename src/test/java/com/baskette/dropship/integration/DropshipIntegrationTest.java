@@ -108,13 +108,12 @@ class DropshipIntegrationTest {
     @Test
     @Order(2)
     void runTask_success() {
-        assumeThat(stagingResult).isNotNull();
-        assumeThat(stagingResult.success()).isTrue();
+        assumeThat(stagingResult != null && stagingResult.success()).isTrue();
 
         taskResult = taskService.runTask(
                         stagingResult.appGuid(),
                         stagingResult.dropletGuid(),
-                        "java -cp . Main",
+                        "java -jar hello.jar",
                         null, null, null)
                 .block(TASK_TIMEOUT);
 
@@ -172,8 +171,7 @@ class DropshipIntegrationTest {
     @Test
     @Order(5)
     void runTask_failureWithInvalidCommand() {
-        assumeThat(stagingResult).isNotNull();
-        assumeThat(stagingResult.success()).isTrue();
+        assumeThat(stagingResult != null && stagingResult.success()).isTrue();
 
         TaskResult result = taskService.runTask(
                         stagingResult.appGuid(),
@@ -243,8 +241,16 @@ class DropshipIntegrationTest {
     private byte[] createInvalidSourceBundle() {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ZipOutputStream zos = new ZipOutputStream(baos)) {
-            zos.putNextEntry(new ZipEntry("invalid.txt"));
-            zos.write("this is not valid java source or bytecode".getBytes());
+            // Corrupted .class file: valid magic bytes (0xCAFEBABE) followed by invalid content.
+            // This reliably triggers a staging failure in java_buildpack regardless of CF configuration,
+            // unlike a plain .txt file which some buildpacks may ignore or auto-detect differently.
+            byte[] corruptedClass = new byte[] {
+                    (byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE, // magic bytes
+                    0x00, 0x00, 0x00, 0x00, // invalid version
+                    0x00, 0x00, 0x00, 0x00  // invalid constant pool
+            };
+            zos.putNextEntry(new ZipEntry("Main.class"));
+            zos.write(corruptedClass);
             zos.closeEntry();
         } catch (IOException e) {
             throw new RuntimeException(e);
