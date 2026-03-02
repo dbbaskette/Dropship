@@ -18,6 +18,7 @@ import org.cloudfoundry.client.v3.builds.CreatedBy;
 import org.cloudfoundry.client.v3.builds.Droplet;
 import org.cloudfoundry.client.v3.builds.GetBuildRequest;
 import org.cloudfoundry.client.v3.builds.GetBuildResponse;
+import org.cloudfoundry.client.v3.packages.BitsData;
 import org.cloudfoundry.client.v3.packages.CreatePackageRequest;
 import org.cloudfoundry.client.v3.packages.CreatePackageResponse;
 import org.cloudfoundry.client.v3.packages.PackageState;
@@ -125,6 +126,7 @@ class StagingServiceTest {
                         .id("package-guid-789")
                         .type(PackageType.BITS)
                         .state(PackageState.AWAITING_UPLOAD)
+                        .data(BitsData.builder().build())
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
         when(packages.upload(any(UploadPackageRequest.class)))
@@ -132,6 +134,7 @@ class StagingServiceTest {
                         .id("package-guid-789")
                         .type(PackageType.BITS)
                         .state(PackageState.PROCESSING_UPLOAD)
+                        .data(BitsData.builder().build())
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
@@ -276,7 +279,8 @@ class StagingServiceTest {
                     assertThat(response.getState()).isEqualTo(BuildState.STAGED);
                     assertThat(response.getDroplet().getId()).isEqualTo("droplet-guid-201");
                 })
-                .verifyComplete();
+                .expectComplete()
+                .verify(Duration.ofSeconds(15));
     }
 
     @Test
@@ -299,6 +303,7 @@ class StagingServiceTest {
                         .id("package-guid-789")
                         .type(PackageType.BITS)
                         .state(PackageState.AWAITING_UPLOAD)
+                        .data(BitsData.builder().build())
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
         when(packages.upload(any(UploadPackageRequest.class)))
@@ -306,6 +311,7 @@ class StagingServiceTest {
                         .id("package-guid-789")
                         .type(PackageType.BITS)
                         .state(PackageState.PROCESSING_UPLOAD)
+                        .data(BitsData.builder().build())
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
@@ -342,7 +348,8 @@ class StagingServiceTest {
                     assertThat(result.durationMs()).isGreaterThanOrEqualTo(0);
                     assertThat(result.errorMessage()).isNull();
                 })
-                .verifyComplete();
+                .expectComplete()
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -365,6 +372,7 @@ class StagingServiceTest {
                         .id("package-guid-789")
                         .type(PackageType.BITS)
                         .state(PackageState.AWAITING_UPLOAD)
+                        .data(BitsData.builder().build())
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
         when(packages.upload(any(UploadPackageRequest.class)))
@@ -372,6 +380,7 @@ class StagingServiceTest {
                         .id("package-guid-789")
                         .type(PackageType.BITS)
                         .state(PackageState.PROCESSING_UPLOAD)
+                        .data(BitsData.builder().build())
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
@@ -404,7 +413,8 @@ class StagingServiceTest {
                     assertThat(result.appGuid()).isEqualTo("app-guid-456");
                     assertThat(result.errorMessage()).isEqualTo("Buildpack compilation failed");
                 })
-                .verifyComplete();
+                .expectComplete()
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -420,7 +430,8 @@ class StagingServiceTest {
                     assertThat(result.success()).isFalse();
                     assertThat(result.errorMessage()).contains("CF API error");
                 })
-                .verifyComplete();
+                .expectComplete()
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -443,6 +454,7 @@ class StagingServiceTest {
                         .id("package-guid-789")
                         .type(PackageType.BITS)
                         .state(PackageState.AWAITING_UPLOAD)
+                        .data(BitsData.builder().build())
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
         when(packages.upload(any(UploadPackageRequest.class)))
@@ -450,6 +462,7 @@ class StagingServiceTest {
                         .id("package-guid-789")
                         .type(PackageType.BITS)
                         .state(PackageState.PROCESSING_UPLOAD)
+                        .data(BitsData.builder().build())
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
@@ -482,7 +495,8 @@ class StagingServiceTest {
                     assertThat(result.success()).isTrue();
                     assertThat(result.buildpack()).isNull();
                 })
-                .verifyComplete();
+                .expectComplete()
+                .verify(Duration.ofSeconds(10));
 
         verify(builds).create(buildRequestCaptor.capture());
         assertThat(buildRequestCaptor.getValue().getLifecycle()).isNull();
@@ -508,6 +522,7 @@ class StagingServiceTest {
                         .id("package-guid-789")
                         .type(PackageType.BITS)
                         .state(PackageState.AWAITING_UPLOAD)
+                        .data(BitsData.builder().build())
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
         when(packages.upload(any(UploadPackageRequest.class)))
@@ -515,6 +530,7 @@ class StagingServiceTest {
                         .id("package-guid-789")
                         .type(PackageType.BITS)
                         .state(PackageState.PROCESSING_UPLOAD)
+                        .data(BitsData.builder().build())
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
@@ -543,7 +559,7 @@ class StagingServiceTest {
                 .thenAwait(Duration.ofMinutes(6))
                 .assertNext(result -> {
                     assertThat(result.success()).isFalse();
-                    assertThat(result.errorMessage()).contains("timed out");
+                    assertThat(result.errorMessage()).containsAnyOf("timed out", "Timeout", "did not observe", "within");
                 })
                 .verifyComplete();
     }

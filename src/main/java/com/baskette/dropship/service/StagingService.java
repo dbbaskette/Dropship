@@ -157,10 +157,10 @@ public class StagingService {
     }
 
     Mono<GetBuildResponse> pollBuild(String buildGuid) {
-        return cfClient.builds()
+        return Mono.defer(() -> cfClient.builds()
                 .get(GetBuildRequest.builder()
                         .buildId(buildGuid)
-                        .build())
+                        .build()))
                 .flatMap(response -> {
                     BuildState state = response.getState();
                     log.debug("Build {} state: {}", buildGuid, state);

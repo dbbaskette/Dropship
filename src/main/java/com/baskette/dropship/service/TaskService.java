@@ -8,7 +8,7 @@ import org.cloudfoundry.client.v3.tasks.CreateTaskRequest;
 import org.cloudfoundry.client.v3.tasks.GetTaskRequest;
 import org.cloudfoundry.client.v3.tasks.GetTaskResponse;
 import org.cloudfoundry.client.v3.tasks.TaskState;
-import org.cloudfoundry.client.CloudFoundryClient;
+import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
