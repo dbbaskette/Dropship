@@ -1,0 +1,5 @@
+cf:
+  skip-ssl-validation: ${CF_SKIP_SSL_VALIDATION:true}
+
+dropship:
+  app-name-prefix: "dropship-it-"

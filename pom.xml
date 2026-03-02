@@ -111,6 +111,9 @@
                         --add-opens java.base/java.lang.reflect=ALL-UNNAMED
                         --add-opens java.base/java.util=ALL-UNNAMED
                     </argLine>
+                    <excludes>
+                        <exclude>**/integration/**</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
             <plugin>
@@ -119,5 +122,38 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <includes>
+                                <include>**/integration/*Test.java</include>
+                                <include>**/integration/*IT.java</include>
+                            </includes>
+                            <argLine>
+                                --add-opens java.base/java.lang=ALL-UNNAMED
+                                --add-opens java.base/java.lang.reflect=ALL-UNNAMED
+                                --add-opens java.base/java.util=ALL-UNNAMED
+                            </argLine>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>
