@@ -214,6 +214,7 @@ class TaskServiceTest {
                 .sequenceId(1)
                 .memoryInMb(512)
                 .diskInMb(1024)
+                .dropletId("droplet-guid-123")
                 .createdAt("2024-01-01T00:00:00Z")
                 .build();
     }
@@ -226,6 +227,7 @@ class TaskServiceTest {
                 .sequenceId(1)
                 .memoryInMb(512)
                 .diskInMb(1024)
+                .dropletId("droplet-guid-123")
                 .command("echo hello")
                 .createdAt("2024-01-01T00:00:00Z")
                 .build();
