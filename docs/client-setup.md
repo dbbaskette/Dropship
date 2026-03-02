@@ -120,6 +120,19 @@ useful for debugging, scripting, and verifying the server outside an MCP client.
 
 All requests go to the `/mcp` endpoint and use the MCP Streamable HTTP transport.
 
+### Automated E2E Test Script
+
+For a one-command verification of the complete `stage_code` → `run_task` →
+`get_task_logs` workflow, use the automated test script:
+
+```bash
+DROPSHIP_URL=https://dropship-mcp.apps.example.com/mcp ./scripts/e2e-curl-test.sh
+```
+
+The script requires `curl`, `jq`, `base64`, `tar`, and the `cf` CLI (logged in to the
+target foundation). It uses the `hello-world` test fixture, encodes it as a source bundle,
+stages it, runs a task, and verifies the expected output appears in the logs.
+
 ### Initialize a Session
 
 Before calling tools, initialize an MCP session:
