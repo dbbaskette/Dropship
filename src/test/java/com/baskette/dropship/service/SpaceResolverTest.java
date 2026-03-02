@@ -95,20 +95,22 @@ class SpaceResolverTest {
     }
 
     @Test
-    void throwsWhenOrgNotFound() {
+    void logsWarningWhenOrgNotFound() {
         when(cloudFoundryClient.organizationsV3()).thenReturn(organizationsV3);
         when(organizationsV3.list(any(ListOrganizationsRequest.class)))
                 .thenReturn(Mono.just(ListOrganizationsResponse.builder()
                         .resources(Collections.emptyList())
                         .build()));
 
-        assertThatThrownBy(() -> spaceResolver.resolve())
+        assertThatCode(() -> spaceResolver.resolve()).doesNotThrowAnyException();
+
+        assertThatThrownBy(() -> spaceResolver.getSpaceGuid())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Organization not found: test-org");
+                .hasMessageContaining("not been resolved");
     }
 
     @Test
-    void throwsWhenSpaceNotFound() {
+    void logsWarningWhenSpaceNotFound() {
         when(cloudFoundryClient.organizationsV3()).thenReturn(organizationsV3);
         when(organizationsV3.list(any(ListOrganizationsRequest.class)))
                 .thenReturn(Mono.just(ListOrganizationsResponse.builder()
@@ -126,9 +128,11 @@ class SpaceResolverTest {
                         .resources(Collections.emptyList())
                         .build()));
 
-        assertThatThrownBy(() -> spaceResolver.resolve())
+        assertThatCode(() -> spaceResolver.resolve()).doesNotThrowAnyException();
+
+        assertThatThrownBy(() -> spaceResolver.getSpaceGuid())
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Space not found: test-space");
+                .hasMessageContaining("not been resolved");
     }
 
     @Test

@@ -9,6 +9,7 @@ applications:
     path: target/dropship-0.1.0-SNAPSHOT.jar
     health-check-type: http
     health-check-http-endpoint: /actuator/health
+    timeout: 120
 
     env:
       JBP_CONFIG_OPEN_JDK_JRE: '{ jre: { version: 21.+ } }'
