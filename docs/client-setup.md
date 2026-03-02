@@ -133,6 +133,13 @@ The script requires `curl`, `jq`, `base64`, `tar`, and the `cf` CLI (logged in t
 target foundation). It uses the `hello-world` test fixture, encodes it as a source bundle,
 stages it, runs a task, and verifies the expected output appears in the logs.
 
+Use `--verbose` to print the raw curl commands as they execute — useful for capturing
+commands for your own scripts or debugging:
+
+```bash
+DROPSHIP_URL=https://dropship-mcp.apps.example.com/mcp ./scripts/e2e-curl-test.sh --verbose
+```
+
 ### Initialize a Session
 
 Before calling tools, initialize an MCP session:
