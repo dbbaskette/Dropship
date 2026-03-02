@@ -30,8 +30,8 @@ applications:
       # Sandbox org/space where Dropship pushes and runs agent workloads.
       # Override these per environment (e.g., cf set-env or vars file).
       # ------------------------------------------------------------------
-      DROPSHIP_SANDBOX_ORG: dropship-sandbox
-      DROPSHIP_SANDBOX_SPACE: dev
+      DROPSHIP_SANDBOX_ORG: ((sandbox-org))
+      DROPSHIP_SANDBOX_SPACE: ((sandbox-space))
 
     # ------------------------------------------------------------------
     # Service bindings

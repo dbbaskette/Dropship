@@ -166,7 +166,9 @@ WebFlux is used because `cf-java-client` is Reactor-based. No bridging `block()`
 Dropship runs as a long-running CF app:
 
 ```bash
-cf push dropship-mcp -f manifest.yml
+cp vars.yml.example vars.yml
+# Edit vars.yml with your CF API URL, UAA credentials, and sandbox org/space
+cf push -f manifest.yml --vars-file vars.yml
 ```
 
 ### CF Foundation Prerequisites

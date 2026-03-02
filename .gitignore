@@ -30,3 +30,6 @@ target/
 # IDE - IntelliJ
 .idea/
 *.iml
+
+# CF vars file (contains secrets)
+vars.yml
