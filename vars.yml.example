@@ -1,0 +1,20 @@
+# vars.yml — CF CLI vars-file for Dropship manifest.yml
+# Copy this file to vars.yml and fill in the values for your environment.
+#
+# Usage:
+#   cp vars.yml.example vars.yml
+#   # edit vars.yml with your values
+#   cf push -f manifest.yml --vars-file vars.yml
+#
+# IMPORTANT: vars.yml contains secrets and must NOT be committed to git.
+
+# CF API endpoint for the target foundation
+cf-api-url: https://api.sys.YOUR-DOMAIN
+
+# UAA client credentials (created via uaac — see docs/cf-setup.md)
+cf-client-id: dropship-client
+cf-client-secret: REPLACE_WITH_CLIENT_SECRET
+
+# Sandbox org and space where Dropship runs agent workloads
+sandbox-org: ai-workloads
+sandbox-space: agent-sandbox
