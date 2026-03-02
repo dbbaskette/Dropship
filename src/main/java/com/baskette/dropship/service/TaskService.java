@@ -23,9 +23,8 @@ public class TaskService {
 
     private static final Logger log = LoggerFactory.getLogger(TaskService.class);
 
-    private static final Duration TASK_TIMEOUT = Duration.ofMinutes(15);
-    private static final Duration INITIAL_POLL_INTERVAL = Duration.ofMillis(500);
-    private static final Duration MAX_POLL_INTERVAL = Duration.ofSeconds(10);
+    static final Duration INITIAL_POLL_INTERVAL = Duration.ofMillis(500);
+    static final Duration MAX_POLL_INTERVAL = Duration.ofSeconds(10);
 
     private final ReactorCloudFoundryClient cfClient;
     private final DropshipProperties properties;
@@ -93,7 +92,7 @@ public class TaskService {
                 .then(createTask(appGuid, command, memoryMb, null, timeoutSeconds, environment))
                 .flatMap(this::pollTask)
                 .map(taskResponse -> toTaskResult(taskResponse, appGuid, command, startTime))
-                .timeout(TASK_TIMEOUT)
+                .timeout(Duration.ofSeconds(properties.maxTaskTimeoutSeconds()))
                 .onErrorResume(error -> {
                     log.error("Task failed for appGuid={}: {}", appGuid, error.getMessage());
                     long duration = System.currentTimeMillis() - startTime;
