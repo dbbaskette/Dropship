@@ -87,14 +87,14 @@ step 1 "Pre-flight checks"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-if [ "$SKIP_PUSH" = true ]; then
-    info "Skipping pre-flight checks (--skip-push)"
-else
-    for cmd in cf; do
-        command -v "$cmd" >/dev/null 2>&1 || { fail "Required command not found: $cmd"; exit 1; }
-    done
+for cmd in cf; do
+    command -v "$cmd" >/dev/null 2>&1 || { fail "Required command not found: $cmd"; exit 1; }
+done
 
-    # --- Verify JAR artifact exists ---
+# --- Verify JAR artifact exists (only when pushing) ---
+if [ "$SKIP_PUSH" = true ]; then
+    info "Skipping JAR check (--skip-push)"
+else
     JAR_PATH="$PROJECT_ROOT/target/dropship-0.1.0-SNAPSHOT.jar"
     if [ -f "$JAR_PATH" ]; then
         pass "JAR artifact exists: $JAR_PATH"
@@ -102,49 +102,64 @@ else
         fail "JAR not found: $JAR_PATH — run 'mvn clean package -DskipTests' first"
         exit 1
     fi
+fi
 
-    # --- Verify required CF env vars ---
-    # When using a vars file, the placeholders in manifest.yml will be
-    # resolved at push time.  When NOT using a vars file, the app must
-    # already have these env vars set via `cf set-env`.
-    REQUIRED_VARS="CF_API_URL CF_CLIENT_ID CF_CLIENT_SECRET DROPSHIP_SANDBOX_ORG DROPSHIP_SANDBOX_SPACE"
+# --- Verify required CF env vars ---
+# This check runs regardless of --skip-push to catch misconfigurations
+# before spending time on smoke-test steps.
+# When using a vars file, the placeholders in manifest.yml will be
+# resolved at push time.  When NOT using a vars file, the app must
+# already have these env vars set via `cf set-env`.
+REQUIRED_VARS="CF_API_URL CF_CLIENT_ID CF_CLIENT_SECRET DROPSHIP_SANDBOX_ORG DROPSHIP_SANDBOX_SPACE"
 
-    if [ -n "${CF_VARS_FILE:-}" ]; then
-        info "Vars file provided: $CF_VARS_FILE — skipping cf env check"
-        if [ ! -f "$CF_VARS_FILE" ]; then
-            fail "CF_VARS_FILE not found: $CF_VARS_FILE"
-            exit 1
+if [ -n "${CF_VARS_FILE:-}" ]; then
+    info "Vars file provided: $CF_VARS_FILE — skipping cf env check"
+    if [ ! -f "$CF_VARS_FILE" ]; then
+        fail "CF_VARS_FILE not found: $CF_VARS_FILE"
+        exit 1
+    fi
+    pass "Vars file exists: $CF_VARS_FILE"
+
+    # Check that placeholder values have been replaced with real values
+    if grep -qE 'YOUR-DOMAIN|REPLACE_WITH' "$CF_VARS_FILE"; then
+        fail "Vars file still contains placeholder values — fill in all values before pushing"
+        info "Look for YOUR-DOMAIN and REPLACE_WITH in $CF_VARS_FILE"
+        exit 1
+    fi
+    pass "Vars file has no placeholder values"
+else
+    info "No CF_VARS_FILE set — checking that $CF_APP_NAME has required env vars via cf env"
+    PREFLIGHT_OK=true
+
+    # Try to fetch current env; app may not exist yet on first push
+    CF_ENV_OUTPUT=$(cf env "$CF_APP_NAME" 2>&1) || true
+    if printf '%s' "$CF_ENV_OUTPUT" | grep -qi "not found\|FAILED"; then
+        info "App $CF_APP_NAME does not exist yet — cannot verify env vars"
+        info "If this is a first push, provide a vars file:"
+        info "  CF_VARS_FILE=vars.yml ./scripts/smoke-test.sh"
+        fail "First push requires a vars file (CF_VARS_FILE) — see docs/deployment.md"
+        exit 1
+    fi
+
+    # Extract only the User-Provided section from cf env output.
+    # CF CLI formats user-provided env vars as "  VAR_NAME: value" under
+    # the "User-Provided:" header, terminated by an empty line or next section.
+    USER_PROVIDED=$(printf '%s' "$CF_ENV_OUTPUT" | sed -n '/^User-Provided:/,/^$/p')
+
+    for var in $REQUIRED_VARS; do
+        if printf '%s' "$USER_PROVIDED" | grep -q "^  $var:"; then
+            pass "CF env var set: $var"
+        else
+            fail "CF env var missing: $var — run: cf set-env $CF_APP_NAME $var <value>"
+            PREFLIGHT_OK=false
         fi
-        pass "Vars file exists: $CF_VARS_FILE"
-    else
-        info "No CF_VARS_FILE set — checking that $CF_APP_NAME has required env vars via cf env"
-        PREFLIGHT_OK=true
+    done
 
-        # Try to fetch current env; app may not exist yet on first push
-        CF_ENV_OUTPUT=$(cf env "$CF_APP_NAME" 2>&1) || true
-        if printf '%s' "$CF_ENV_OUTPUT" | grep -qi "not found\|FAILED"; then
-            info "App $CF_APP_NAME does not exist yet — cannot verify env vars"
-            info "If this is a first push, provide a vars file:"
-            info "  CF_VARS_FILE=vars.yml ./scripts/smoke-test.sh"
-            fail "First push requires a vars file (CF_VARS_FILE) — see docs/deployment.md"
-            exit 1
-        fi
-
-        for var in $REQUIRED_VARS; do
-            if printf '%s' "$CF_ENV_OUTPUT" | grep -q "$var"; then
-                pass "CF env var set: $var"
-            else
-                fail "CF env var missing: $var — run: cf set-env $CF_APP_NAME $var <value>"
-                PREFLIGHT_OK=false
-            fi
-        done
-
-        if [ "$PREFLIGHT_OK" = false ]; then
-            echo ""
-            info "Set missing env vars with 'cf set-env' then re-run, or use a vars file:"
-            info "  CF_VARS_FILE=vars.yml ./scripts/smoke-test.sh"
-            exit 1
-        fi
+    if [ "$PREFLIGHT_OK" = false ]; then
+        echo ""
+        info "Set missing env vars with 'cf set-env' then re-run, or use a vars file:"
+        info "  CF_VARS_FILE=vars.yml ./scripts/smoke-test.sh"
+        exit 1
     fi
 fi
 
