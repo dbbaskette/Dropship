@@ -26,6 +26,11 @@ import org.cloudfoundry.client.v3.packages.PackageType;
 import org.cloudfoundry.client.v3.packages.Packages;
 import org.cloudfoundry.client.v3.packages.UploadPackageRequest;
 import org.cloudfoundry.client.v3.packages.UploadPackageResponse;
+import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
+import org.cloudfoundry.operations.applications.ApplicationLog;
+import org.cloudfoundry.operations.applications.ApplicationLogType;
+import org.cloudfoundry.operations.applications.ApplicationLogsRequest;
+import org.cloudfoundry.operations.applications.Applications;
 import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +39,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -65,6 +71,12 @@ class StagingServiceTest {
     private SpaceResolver spaceResolver;
 
     @Mock
+    private DefaultCloudFoundryOperations cfOperations;
+
+    @Mock
+    private Applications applicationsOps;
+
+    @Mock
     private ApplicationsV3 applicationsV3;
 
     @Mock
@@ -90,7 +102,28 @@ class StagingServiceTest {
         properties = new DropshipProperties(
                 "test-org", "test-space", "https://api.test.cf.example.com",
                 2048, 4096, 900, 512, 1024, 2048, "dropship-");
-        stagingService = new StagingService(cfClient, properties, spaceResolver);
+        stagingService = new StagingService(cfClient, properties, spaceResolver, cfOperations);
+    }
+
+    /** Stub log retrieval to return the given messages (or empty flux). */
+    private void stubStagingLogs(String... messages) {
+        when(cfOperations.applications()).thenReturn(applicationsOps);
+        if (messages.length == 0) {
+            when(applicationsOps.logs(any(ApplicationLogsRequest.class))).thenReturn(Flux.empty());
+        } else {
+            ApplicationLog[] logs = new ApplicationLog[messages.length];
+            for (int i = 0; i < messages.length; i++) {
+                logs[i] = ApplicationLog.builder()
+                        .message(messages[i])
+                        .logType(ApplicationLogType.OUT)
+                        .timestamp((long) (i + 1) * 1_000_000_000L)
+                        .sourceType("STG")
+                        .sourceId("0")
+                        .instanceId("0")
+                        .build();
+            }
+            when(applicationsOps.logs(any(ApplicationLogsRequest.class))).thenReturn(Flux.just(logs));
+        }
     }
 
     @Test
@@ -338,13 +371,17 @@ class StagingServiceTest {
                                 .build())
                         .build()));
 
+        stubStagingLogs("-----> Downloading JDK", "-----> Build succeeded");
+
         StepVerifier.create(stagingService.stage(
                         "test source".getBytes(), "java_buildpack", 512, 1024))
                 .assertNext(result -> {
                     assertThat(result.success()).isTrue();
                     assertThat(result.dropletGuid()).isEqualTo("droplet-guid-201");
                     assertThat(result.appGuid()).isEqualTo("app-guid-456");
+                    assertThat(result.appName()).isNotNull().startsWith("dropship-");
                     assertThat(result.buildpack()).isEqualTo("java_buildpack");
+                    assertThat(result.stagingLogs()).contains("Downloading JDK");
                     assertThat(result.durationMs()).isGreaterThanOrEqualTo(0);
                     assertThat(result.errorMessage()).isNull();
                 })
@@ -405,12 +442,15 @@ class StagingServiceTest {
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
+        stubStagingLogs("-----> Compilation error: missing dependency");
+
         StepVerifier.create(stagingService.stage(
                         "test source".getBytes(), null, null, null))
                 .assertNext(result -> {
                     assertThat(result.success()).isFalse();
                     assertThat(result.dropletGuid()).isNull();
                     assertThat(result.appGuid()).isEqualTo("app-guid-456");
+                    assertThat(result.appName()).isNotNull().startsWith("dropship-");
                     assertThat(result.errorMessage()).isEqualTo("Buildpack compilation failed");
                 })
                 .expectComplete()
@@ -488,6 +528,8 @@ class StagingServiceTest {
                                 .id("droplet-guid-201")
                                 .build())
                         .build()));
+
+        stubStagingLogs();
 
         StepVerifier.create(stagingService.stage(
                         "test source".getBytes(), null, null, null))

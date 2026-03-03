@@ -31,7 +31,8 @@ FIXTURE_DIR="$PROJECT_ROOT/src/test/resources/fixtures/hello-world"
 
 HEADER_FILE=$(mktemp)
 PAYLOAD_FILE=$(mktemp)
-trap 'rm -f "$HEADER_FILE" "$PAYLOAD_FILE"' EXIT
+COMPILE_DIR=$(mktemp -d)
+trap 'rm -f "$HEADER_FILE" "$PAYLOAD_FILE"; rm -rf "$COMPILE_DIR"' EXIT
 
 START_TIME=$(date +%s)
 
@@ -165,12 +166,23 @@ pass "Initialized notification sent"
 step 2 "Prepare source bundle"
 
 [ -d "$FIXTURE_DIR" ] || fail "Fixture directory not found: $FIXTURE_DIR"
+[ -f "$FIXTURE_DIR/Main.java" ] || fail "Fixture Main.java not found: $FIXTURE_DIR/Main.java"
 
-show_curl "tar czf - -C $FIXTURE_DIR . | base64"
+# java_buildpack requires a compiled JAR artifact; compile Main.java locally.
+for cmd in javac jar; do
+    command -v "$cmd" >/dev/null 2>&1 || fail "Required command not found: $cmd (JDK required)"
+done
 
-SOURCE_BUNDLE=$(tar czf - -C "$FIXTURE_DIR" . | base64)
+info "Compiling Main.java → hello.jar for java_buildpack"
+javac -d "$COMPILE_DIR" "$FIXTURE_DIR/Main.java" || fail "Failed to compile Main.java"
+jar cfe "$COMPILE_DIR/hello.jar" Main -C "$COMPILE_DIR" Main.class || fail "Failed to create hello.jar"
+pass "Compiled hello.jar from Main.java"
+
+show_curl "tar czf - -C $COMPILE_DIR hello.jar | base64"
+
+SOURCE_BUNDLE=$(tar czf - -C "$COMPILE_DIR" hello.jar | base64)
 BUNDLE_SIZE=$(printf '%s' "$SOURCE_BUNDLE" | wc -c | tr -d ' ')
-pass "Source bundle: $BUNDLE_SIZE base64 chars from $FIXTURE_DIR"
+pass "Source bundle: $BUNDLE_SIZE base64 chars"
 
 # ============================================================
 # Step 3: stage_code

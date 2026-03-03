@@ -38,9 +38,6 @@ class TaskServiceTest {
     private ReactorCloudFoundryClient cfClient;
 
     @Mock
-    private SpaceResolver spaceResolver;
-
-    @Mock
     private ApplicationsV3 applicationsV3;
 
     @Mock
@@ -60,7 +57,7 @@ class TaskServiceTest {
         properties = new DropshipProperties(
                 "test-org", "test-space", "https://api.test.cf.example.com",
                 2048, 4096, 900, 512, 1024, 2048, "dropship-");
-        taskService = new TaskService(cfClient, properties, spaceResolver);
+        taskService = new TaskService(cfClient, properties);
     }
 
     @Test
@@ -158,7 +155,7 @@ class TaskServiceTest {
         DropshipProperties lowTimeoutProps = new DropshipProperties(
                 "test-org", "test-space", "https://api.test.cf.example.com",
                 2048, 4096, 60, 512, 1024, 2048, "dropship-");
-        TaskService service = new TaskService(cfClient, lowTimeoutProps, spaceResolver);
+        TaskService service = new TaskService(cfClient, lowTimeoutProps);
 
         when(cfClient.tasks()).thenReturn(tasks);
         when(tasks.create(any(CreateTaskRequest.class)))

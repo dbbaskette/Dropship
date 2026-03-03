@@ -28,14 +28,11 @@ public class TaskService {
 
     private final ReactorCloudFoundryClient cfClient;
     private final DropshipProperties properties;
-    private final SpaceResolver spaceResolver;
 
     public TaskService(ReactorCloudFoundryClient cfClient,
-                       DropshipProperties properties,
-                       SpaceResolver spaceResolver) {
+                       DropshipProperties properties) {
         this.cfClient = cfClient;
         this.properties = properties;
-        this.spaceResolver = spaceResolver;
     }
 
     Mono<Void> setCurrentDroplet(String appGuid, String dropletGuid) {

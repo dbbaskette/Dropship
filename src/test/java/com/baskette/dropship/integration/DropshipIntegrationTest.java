@@ -7,7 +7,6 @@ import com.baskette.dropship.service.LogService;
 import com.baskette.dropship.service.StagingService;
 import com.baskette.dropship.service.TaskService;
 import org.cloudfoundry.client.v3.applications.DeleteApplicationRequest;
-import org.cloudfoundry.client.v3.applications.GetApplicationRequest;
 import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
@@ -98,7 +97,7 @@ class DropshipIntegrationTest {
 
         if (stagingResult.appGuid() != null) {
             appGuidsToCleanup.add(stagingResult.appGuid());
-            appName = lookupAppName(stagingResult.appGuid());
+            appName = stagingResult.appName();
         }
 
         log.info("Staging succeeded: dropletGuid={}, appGuid={}, appName={}",
@@ -256,15 +255,6 @@ class DropshipIntegrationTest {
             throw new RuntimeException(e);
         }
         return baos.toByteArray();
-    }
-
-    private String lookupAppName(String appGuid) {
-        return cfClient.applicationsV3()
-                .get(GetApplicationRequest.builder()
-                        .applicationId(appGuid)
-                        .build())
-                .map(response -> response.getName())
-                .block(Duration.ofSeconds(10));
     }
 
     private void deleteRecursively(Path path) {

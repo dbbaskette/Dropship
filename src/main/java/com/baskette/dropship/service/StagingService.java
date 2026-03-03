@@ -17,6 +17,8 @@ import org.cloudfoundry.client.v3.packages.CreatePackageRequest;
 import org.cloudfoundry.client.v3.packages.PackageRelationships;
 import org.cloudfoundry.client.v3.packages.PackageType;
 import org.cloudfoundry.client.v3.packages.UploadPackageRequest;
+import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
+import org.cloudfoundry.operations.applications.ApplicationLogsRequest;
 import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class StagingService {
@@ -38,17 +41,21 @@ public class StagingService {
     private static final Duration STAGING_TIMEOUT = Duration.ofMinutes(5);
     private static final Duration INITIAL_POLL_INTERVAL = Duration.ofMillis(500);
     private static final Duration MAX_POLL_INTERVAL = Duration.ofSeconds(10);
+    private static final Duration LOG_RETRIEVAL_TIMEOUT = Duration.ofSeconds(15);
 
     private final ReactorCloudFoundryClient cfClient;
     private final DropshipProperties properties;
     private final SpaceResolver spaceResolver;
+    private final DefaultCloudFoundryOperations cfOperations;
 
     public StagingService(ReactorCloudFoundryClient cfClient,
                           DropshipProperties properties,
-                          SpaceResolver spaceResolver) {
+                          SpaceResolver spaceResolver,
+                          DefaultCloudFoundryOperations cfOperations) {
         this.cfClient = cfClient;
         this.properties = properties;
         this.spaceResolver = spaceResolver;
+        this.cfOperations = cfOperations;
     }
 
     /**
@@ -72,16 +79,16 @@ public class StagingService {
                 .flatMap(appGuid -> createAndUploadPackage(appGuid, sourceBundle)
                         .flatMap(packageGuid -> createBuild(packageGuid, buildpack))
                         .flatMap(this::pollBuild)
-                        .map(buildResponse -> toStagingResult(
-                                buildResponse, appGuid, buildpack, startTime))
-                        .onErrorResume(error -> Mono.just(
-                                toErrorResult(appGuid, buildpack, startTime, error))))
+                        .flatMap(buildResponse -> retrieveStagingLogs(appName)
+                                .map(logs -> toStagingResult(buildResponse, appGuid, appName, buildpack, startTime, logs)))
+                        .onErrorResume(error -> retrieveStagingLogs(appName)
+                                .map(logs -> toErrorResult(appGuid, appName, buildpack, startTime, error, logs))))
                 .timeout(STAGING_TIMEOUT)
                 .onErrorResume(error -> {
                     log.error("Staging failed for app={}: {}", appName, error.getMessage());
                     return Mono.just(new StagingResult(
-                            null, null, buildpack,
-                            "Staging timed out or failed: " + error.getMessage(),
+                            null, null, appName, buildpack,
+                            "(staging logs unavailable)",
                             System.currentTimeMillis() - startTime,
                             false, error.getMessage()));
                 });
@@ -177,9 +184,21 @@ public class StagingService {
                         .filter(StagingInProgressException.class::isInstance));
     }
 
+    private Mono<String> retrieveStagingLogs(String appName) {
+        return cfOperations.applications()
+                .logs(ApplicationLogsRequest.builder()
+                        .name(appName)
+                        .recent(true)
+                        .build())
+                .map(appLog -> appLog.getMessage())
+                .collect(Collectors.joining("\n"))
+                .timeout(LOG_RETRIEVAL_TIMEOUT)
+                .onErrorReturn("(staging logs unavailable)");
+    }
+
     private StagingResult toStagingResult(GetBuildResponse buildResponse,
-                                          String appGuid, String buildpack,
-                                          long startTime) {
+                                          String appGuid, String appName, String buildpack,
+                                          long startTime, String stagingLogs) {
         long duration = System.currentTimeMillis() - startTime;
 
         if (buildResponse.getState() == BuildState.STAGED) {
@@ -188,23 +207,23 @@ public class StagingService {
             log.info("Staging succeeded: appGuid={}, dropletGuid={}, duration={}ms",
                     appGuid, dropletGuid, duration);
             return new StagingResult(
-                    dropletGuid, appGuid, buildpack,
-                    "Staging completed successfully", duration, true, null);
+                    dropletGuid, appGuid, appName, buildpack,
+                    stagingLogs, duration, true, null);
         }
 
         String error = buildResponse.getError() != null
                 ? buildResponse.getError() : "Unknown staging error";
         log.warn("Staging failed: appGuid={}, error={}", appGuid, error);
-        return new StagingResult(null, appGuid, buildpack, error, duration, false, error);
+        return new StagingResult(null, appGuid, appName, buildpack, stagingLogs, duration, false, error);
     }
 
-    private StagingResult toErrorResult(String appGuid, String buildpack,
-                                        long startTime, Throwable error) {
+    private StagingResult toErrorResult(String appGuid, String appName, String buildpack,
+                                        long startTime, Throwable error, String stagingLogs) {
         long duration = System.currentTimeMillis() - startTime;
         log.error("Staging error: appGuid={}, error={}", appGuid, error.getMessage());
         return new StagingResult(
-                null, appGuid, buildpack,
-                error.getMessage(), duration, false, error.getMessage());
+                null, appGuid, appName, buildpack,
+                stagingLogs, duration, false, error.getMessage());
     }
 
     private Mono<Path> writeTempFile(byte[] data) {

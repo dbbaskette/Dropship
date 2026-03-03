@@ -14,6 +14,7 @@ class StagingResultTest {
         StagingResult result = new StagingResult(
                 "droplet-guid-123",
                 "app-guid-456",
+                "dropship-abc12345",
                 "java_buildpack",
                 "-----> Downloading Java Buildpack\n-----> Compiling...",
                 4500L,
@@ -25,6 +26,7 @@ class StagingResultTest {
 
         assertThat(json).contains("\"dropletGuid\":\"droplet-guid-123\"");
         assertThat(json).contains("\"appGuid\":\"app-guid-456\"");
+        assertThat(json).contains("\"appName\":\"dropship-abc12345\"");
         assertThat(json).contains("\"buildpack\":\"java_buildpack\"");
         assertThat(json).contains("\"stagingLogs\":");
         assertThat(json).contains("\"durationMs\":4500");
@@ -37,6 +39,7 @@ class StagingResultTest {
         StagingResult result = new StagingResult(
                 null,
                 "app-guid-789",
+                "dropship-xyz98765",
                 null,
                 "-----> Staging failed",
                 1200L,
@@ -48,6 +51,7 @@ class StagingResultTest {
 
         assertThat(json).contains("\"dropletGuid\":null");
         assertThat(json).contains("\"appGuid\":\"app-guid-789\"");
+        assertThat(json).contains("\"appName\":\"dropship-xyz98765\"");
         assertThat(json).contains("\"success\":false");
         assertThat(json).contains("\"errorMessage\":\"Buildpack compilation step failed\"");
     }
@@ -58,6 +62,7 @@ class StagingResultTest {
                 {
                   "dropletGuid": "droplet-abc",
                   "appGuid": "app-def",
+                  "appName": "dropship-testapp",
                   "buildpack": "nodejs_buildpack",
                   "stagingLogs": "Staging complete",
                   "durationMs": 3000,
@@ -70,6 +75,7 @@ class StagingResultTest {
 
         assertThat(result.dropletGuid()).isEqualTo("droplet-abc");
         assertThat(result.appGuid()).isEqualTo("app-def");
+        assertThat(result.appName()).isEqualTo("dropship-testapp");
         assertThat(result.buildpack()).isEqualTo("nodejs_buildpack");
         assertThat(result.stagingLogs()).isEqualTo("Staging complete");
         assertThat(result.durationMs()).isEqualTo(3000L);
@@ -82,6 +88,7 @@ class StagingResultTest {
         StagingResult original = new StagingResult(
                 "droplet-round-trip",
                 "app-round-trip",
+                "dropship-roundtrip",
                 "python_buildpack",
                 "-----> Installing python 3.11\n-----> Done",
                 7800L,

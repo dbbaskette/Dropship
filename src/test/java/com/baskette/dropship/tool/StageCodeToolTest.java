@@ -39,7 +39,7 @@ class StageCodeToolTest {
         String base64Source = Base64.getEncoder().encodeToString(sourceBytes);
 
         StagingResult expected = new StagingResult(
-                "droplet-guid-201", "app-guid-456", "java_buildpack",
+                "droplet-guid-201", "app-guid-456", "dropship-testapp", "java_buildpack",
                 "Staging completed successfully", 1500L, true, null);
         when(stagingService.stage(any(byte[].class), eq("java_buildpack"), eq(512), eq(1024)))
                 .thenReturn(Mono.just(expected));
@@ -59,7 +59,7 @@ class StageCodeToolTest {
         String base64Source = Base64.getEncoder().encodeToString(sourceBytes);
 
         StagingResult expected = new StagingResult(
-                "droplet-guid-201", "app-guid-456", null,
+                "droplet-guid-201", "app-guid-456", "dropship-testapp", null,
                 "Staging completed successfully", 1200L, true, null);
         when(stagingService.stage(any(byte[].class), isNull(), isNull(), isNull()))
                 .thenReturn(Mono.just(expected));
@@ -125,7 +125,7 @@ class StageCodeToolTest {
         String base64Source = Base64.getEncoder().encodeToString(sourceBytes);
 
         StagingResult expected = new StagingResult(
-                null, "app-guid-456", "java_buildpack",
+                null, "app-guid-456", "dropship-testapp", "java_buildpack",
                 "Buildpack compilation failed", 3000L, false,
                 "Buildpack compilation failed");
         when(stagingService.stage(any(byte[].class), eq("java_buildpack"), isNull(), isNull()))
