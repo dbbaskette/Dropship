@@ -1,11 +1,11 @@
 ---
 applications:
   - name: dropship-mcp
-    memory: 512M
+    memory: 1G
     disk_quota: 1G
     instances: 1
     buildpacks:
-      - java_buildpack
+      - java_buildpack_offline
     path: target/dropship-0.1.0-SNAPSHOT.jar
     health-check-type: http
     health-check-http-endpoint: /actuator/health
@@ -15,30 +15,11 @@ applications:
       JBP_CONFIG_OPEN_JDK_JRE: '{ jre: { version: 21.+ } }'
       SPRING_PROFILES_ACTIVE: cloud
       # ------------------------------------------------------------------
-      # CF authentication — choose ONE credential pair.
-      # Client credentials (Option A) takes precedence if both are set.
-      # Set via `cf set-env` or a vars file — do not commit secrets.
-      # See docs/cf-setup.md and vars.yml.example for details.
+      # All CF configuration is optional at deploy time.
+      # Credentials are provided per-user via MCP HTTP headers.
+      # Set these via `cf set-env` or a vars file if you want
+      # server-level defaults. See docs/cf-setup.md for details.
       # ------------------------------------------------------------------
-      # Option A: Client credentials (production / service accounts)
-      CF_CLIENT_ID: ((cf-client-id))
-      CF_CLIENT_SECRET: ((cf-client-secret))
-      # Option B: Password grant (dev/testing with a personal account)
-      # CF_USERNAME: ((cf-username))
-      # CF_PASSWORD: ((cf-password))
-      # ------------------------------------------------------------------
-      # CF API URL.  The cloud profile auto-detects this from
-      # VCAP_APPLICATION, so this env var acts as an explicit override.
-      # Set it when pushing to a foundation where VCAP metadata is
-      # unavailable or when running locally with the cloud profile.
-      # ------------------------------------------------------------------
-      CF_API_URL: ((cf-api-url))
-      # ------------------------------------------------------------------
-      # Sandbox org/space where Dropship pushes and runs agent workloads.
-      # Override these per environment (e.g., cf set-env or vars file).
-      # ------------------------------------------------------------------
-      DROPSHIP_SANDBOX_ORG: ((sandbox-org))
-      DROPSHIP_SANDBOX_SPACE: ((sandbox-space))
 
     # ------------------------------------------------------------------
     # Service bindings

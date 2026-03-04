@@ -23,7 +23,7 @@ class SpaceResolverHealthIndicatorTest {
     }
 
     @Test
-    void healthReturnsDownWhenOrgBlank() {
+    void healthReturnsUpWithPerUserModeWhenOrgBlank() {
         DropshipProperties properties = new DropshipProperties(
                 "", "test-space", "https://api.test.cf.example.com",
                 2048, 4096, 900, 512, 1024, 2048, "dropship-");
@@ -31,12 +31,12 @@ class SpaceResolverHealthIndicatorTest {
         SpaceResolverHealthIndicator indicator = new SpaceResolverHealthIndicator(properties);
         Health health = indicator.health();
 
-        assertThat(health.getStatus()).isEqualTo(Status.DOWN);
-        assertThat(health.getDetails()).containsEntry("reason", "sandboxOrg or sandboxSpace not configured");
+        assertThat(health.getStatus()).isEqualTo(Status.UP);
+        assertThat(health.getDetails()).containsEntry("mode", "per-user credentials");
     }
 
     @Test
-    void healthReturnsDownWhenSpaceBlank() {
+    void healthReturnsUpWithPerUserModeWhenSpaceBlank() {
         DropshipProperties properties = new DropshipProperties(
                 "test-org", "", "https://api.test.cf.example.com",
                 2048, 4096, 900, 512, 1024, 2048, "dropship-");
@@ -44,7 +44,7 @@ class SpaceResolverHealthIndicatorTest {
         SpaceResolverHealthIndicator indicator = new SpaceResolverHealthIndicator(properties);
         Health health = indicator.health();
 
-        assertThat(health.getStatus()).isEqualTo(Status.DOWN);
-        assertThat(health.getDetails()).containsEntry("reason", "sandboxOrg or sandboxSpace not configured");
+        assertThat(health.getStatus()).isEqualTo(Status.UP);
+        assertThat(health.getDetails()).containsEntry("mode", "per-user credentials");
     }
 }

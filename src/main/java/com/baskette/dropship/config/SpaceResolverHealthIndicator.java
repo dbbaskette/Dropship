@@ -24,8 +24,8 @@ public class SpaceResolverHealthIndicator implements HealthIndicator {
                     .withDetail("sandboxSpace", space)
                     .build();
         }
-        return Health.down()
-                .withDetail("reason", "sandboxOrg or sandboxSpace not configured")
+        return Health.up()
+                .withDetail("mode", "per-user credentials")
                 .build();
     }
 }

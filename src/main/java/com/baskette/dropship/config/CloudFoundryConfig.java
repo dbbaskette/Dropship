@@ -39,6 +39,7 @@ public class CloudFoundryConfig {
     private static final Logger log = LoggerFactory.getLogger(CloudFoundryConfig.class);
 
     @Bean
+    @ConditionalOnExpression("!'${dropship.cf-api-url:}'.isEmpty()")
     DefaultConnectionContext connectionContext(DropshipProperties properties,
                                               @Value("${cf.skip-ssl-validation:false}") boolean skipSslValidation) {
         return DefaultConnectionContext.builder()
