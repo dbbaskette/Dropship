@@ -15,7 +15,8 @@ applications:
       JBP_CONFIG_OPEN_JDK_JRE: '{ jre: { version: 21.+ } }'
       SPRING_PROFILES_ACTIVE: cloud
       # ------------------------------------------------------------------
-      # CF UAA client credentials (required).
+      # CF UAA client credentials — optional (admin/default fallback only).
+      # Per-user credentials are supplied via connect_cf at runtime.
       # Set these via `cf set-env` or a vars file — do not commit secrets.
       # ------------------------------------------------------------------
       CF_CLIENT_ID: ((cf-client-id))

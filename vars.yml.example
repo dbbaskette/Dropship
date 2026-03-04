@@ -11,7 +11,9 @@
 # CF API endpoint for the target foundation
 cf-api-url: https://api.sys.YOUR-DOMAIN
 
-# UAA client credentials (created via uaac — see docs/cf-setup.md)
+# UAA client credentials — optional (admin/default fallback only).
+# Per-user credentials are supplied via connect_cf at runtime.
+# (created via uaac — see docs/cf-setup.md)
 cf-client-id: dropship-client
 cf-client-secret: REPLACE_WITH_CLIENT_SECRET
 
