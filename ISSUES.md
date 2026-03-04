@@ -51,7 +51,7 @@ Each issue is scoped to be independently buildable, testable, and mergeable. Iss
 
 ---
 
-### Issue #100 — Add Spring Security dependencies
+### Issue #112 — Add Spring Security dependencies
 **Labels:** `scaffold` `auth`
 **Milestone:** M7
 **Depends on:** nothing
@@ -63,19 +63,19 @@ Add `spring-boot-starter-security` and `spring-security-test` to `pom.xml`. No b
 - [ ] `spring-boot-starter-security` added to `pom.xml`
 - [ ] `spring-security-test` added with `<scope>test</scope>`
 - [ ] `mvn dependency:resolve` succeeds
-- [ ] Existing unit tests still pass (will need `StaticCredentialsSecurityConfiguration` from #101 to avoid Spring Security locking down endpoints)
+- [ ] Existing unit tests still pass (will need `StaticCredentialsSecurityConfiguration` from #113 to avoid Spring Security locking down endpoints)
 
 **Files:**
 - `pom.xml`
 
-**Note:** Must be delivered together with #101 to avoid breaking existing behavior.
+**Note:** Must be delivered together with #113 to avoid breaking existing behavior.
 
 ---
 
-### Issue #101 — Create StaticCredentialsSecurityConfiguration
+### Issue #113 — Create StaticCredentialsSecurityConfiguration
 **Labels:** `config` `auth`
 **Milestone:** M7
-**Depends on:** #100
+**Depends on:** #112
 
 **Description:**
 Create a `SecurityFilterChain` bean that permits all requests and disables CSRF. This preserves the current open-endpoint behavior after adding Spring Security to the classpath. Modeled after `StaticCredentialsSecurityConfiguration` in cloud-foundry-mcp.
@@ -94,10 +94,10 @@ Create a `SecurityFilterChain` bean that permits all requests and disables CSRF.
 
 ---
 
-### Issue #102 — Support password grant authentication (CF_USERNAME / CF_PASSWORD)
+### Issue #114 — Support password grant authentication (CF_USERNAME / CF_PASSWORD)
 **Labels:** `config` `auth`
 **Milestone:** M7
-**Depends on:** #101
+**Depends on:** #113
 
 **Description:**
 Add `PasswordGrantTokenProvider` as an alternative to `ClientCredentialsGrantTokenProvider`. Auto-detect which credential type to use based on which environment variables are set. This matches how cloud-foundry-mcp supports `CF_USERNAME`/`CF_PASSWORD` for local dev and user-scoped access.
@@ -118,10 +118,10 @@ Add `PasswordGrantTokenProvider` as an alternative to `ClientCredentialsGrantTok
 
 ---
 
-### Issue #103 — Unit tests for dual credential configuration
+### Issue #115 — Unit tests for dual credential configuration
 **Labels:** `test` `auth`
 **Milestone:** M7
-**Depends on:** #102
+**Depends on:** #114
 
 **Description:**
 Verify that the conditional bean wiring correctly activates the right `TokenProvider` based on configuration.
@@ -138,10 +138,10 @@ Verify that the conditional bean wiring correctly activates the right `TokenProv
 
 ---
 
-### Issue #104 — Update CF setup documentation for dual credential types
+### Issue #116 — Update CF setup documentation for dual credential types
 **Labels:** `docs` `auth`
 **Milestone:** M7
-**Depends on:** #102
+**Depends on:** #114
 
 **Description:**
 Update `docs/cf-setup.md` to document both authentication options and when to use each.
@@ -163,11 +163,11 @@ Update `docs/cf-setup.md` to document both authentication options and when to us
 ## Dependency Graph
 
 ```
-#100 Spring Security dependencies
- └── #101 StaticCredentialsSecurityConfiguration
-      └── #102 Dual credential support (password grant + client credentials)
-           ├── #103 Unit tests
-           └── #104 Documentation update
+#112 Spring Security dependencies
+ └── #113 StaticCredentialsSecurityConfiguration
+      └── #114 Dual credential support (password grant + client credentials)
+           ├── #115 Unit tests
+           └── #116 Documentation update
 ```
 
 All M7 issues are sequential — each builds on the previous.
@@ -179,8 +179,8 @@ All M7 issues are sequential — each builds on the previous.
 | GH # | Title | Labels | Milestone | Depends On | Status |
 |---|---|---|---|---|---|
 | #1–#22 | M1–M6 (Skeleton through Integration) | various | M1–M6 | various | COMPLETE |
-| #100 | Add Spring Security dependencies | `scaffold` `auth` | M7 | — | TODO |
-| #101 | Create StaticCredentialsSecurityConfiguration | `config` `auth` | M7 | #100 | TODO |
-| #102 | Support password grant authentication | `config` `auth` | M7 | #101 | TODO |
-| #103 | Unit tests for dual credential configuration | `test` `auth` | M7 | #102 | TODO |
-| #104 | Update CF setup docs for dual credentials | `docs` `auth` | M7 | #102 | TODO |
+| #112 | Add Spring Security dependencies | `scaffold` `auth` | M7 | — | TODO |
+| #113 | Create StaticCredentialsSecurityConfiguration | `config` `auth` | M7 | #112 | TODO |
+| #114 | Support password grant authentication | `config` `auth` | M7 | #113 | TODO |
+| #115 | Unit tests for dual credential configuration | `test` `auth` | M7 | #114 | TODO |
+| #116 | Update CF setup docs for dual credentials | `docs` `auth` | M7 | #114 | TODO |
