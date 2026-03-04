@@ -2,6 +2,7 @@ package com.baskette.dropship.config;
 
 import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
 import org.cloudfoundry.reactor.DefaultConnectionContext;
+import org.cloudfoundry.reactor.TokenProvider;
 import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.cloudfoundry.reactor.tokenprovider.ClientCredentialsGrantTokenProvider;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,7 @@ class CloudFoundryConfigTest {
     private DefaultConnectionContext connectionContext;
 
     @Autowired
-    private ClientCredentialsGrantTokenProvider tokenProvider;
+    private TokenProvider tokenProvider;
 
     @Autowired
     private ReactorCloudFoundryClient cloudFoundryClient;
@@ -35,8 +36,8 @@ class CloudFoundryConfigTest {
     }
 
     @Test
-    void tokenProviderBeanIsCreated() {
-        assertThat(tokenProvider).isNotNull();
+    void tokenProviderIsClientCredentials() {
+        assertThat(tokenProvider).isInstanceOf(ClientCredentialsGrantTokenProvider.class);
     }
 
     @Test

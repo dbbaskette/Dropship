@@ -1,37 +1,28 @@
 package com.baskette.dropship.auth;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
-import org.springframework.mock.web.server.MockServerWebExchange;
-import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.web.server.SecurityWebFilterChain;
-import reactor.test.StepVerifier;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.reactive.server.WebTestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")
 class StaticCredentialsSecurityConfigurationTest {
 
-    @Test
-    void securityWebFilterChainBeanIsCreated() {
-        StaticCredentialsSecurityConfiguration config = new StaticCredentialsSecurityConfiguration();
-        ServerHttpSecurity http = ServerHttpSecurity.http();
-
-        SecurityWebFilterChain filterChain = config.securityWebFilterChain(http);
-
-        assertThat(filterChain).isNotNull();
-    }
+    @Autowired
+    WebTestClient webTestClient;
 
     @Test
-    void filterChainPermitsUnauthenticatedRequests() {
-        StaticCredentialsSecurityConfiguration config = new StaticCredentialsSecurityConfiguration();
-        ServerHttpSecurity http = ServerHttpSecurity.http();
-        SecurityWebFilterChain filterChain = config.securityWebFilterChain(http);
-
-        MockServerHttpRequest request = MockServerHttpRequest.get("/mcp").build();
-        MockServerWebExchange exchange = MockServerWebExchange.from(request);
-
-        StepVerifier.create(filterChain.matches(exchange))
-                .expectNext(true)
-                .verifyComplete();
+    void permitsUnauthenticatedRequests() {
+        webTestClient.get().uri("/nonexistent")
+                .exchange()
+                .expectStatus().value(status ->
+                        assertThat(status)
+                                .isNotEqualTo(HttpStatus.UNAUTHORIZED.value())
+                                .isNotEqualTo(HttpStatus.FORBIDDEN.value()));
     }
 }

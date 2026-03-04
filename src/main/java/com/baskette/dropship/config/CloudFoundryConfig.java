@@ -5,7 +5,12 @@ import org.cloudfoundry.reactor.DefaultConnectionContext;
 import org.cloudfoundry.reactor.TokenProvider;
 import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.cloudfoundry.reactor.tokenprovider.ClientCredentialsGrantTokenProvider;
+import org.cloudfoundry.reactor.tokenprovider.PasswordGrantTokenProvider;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -13,6 +18,8 @@ import java.net.URI;
 
 @Configuration
 public class CloudFoundryConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(CloudFoundryConfig.class);
 
     @Bean
     DefaultConnectionContext connectionContext(DropshipProperties properties,
@@ -24,9 +31,11 @@ public class CloudFoundryConfig {
     }
 
     @Bean
-    ClientCredentialsGrantTokenProvider tokenProvider(
+    @ConditionalOnExpression("!'${cf.client-id:}'.isEmpty()")
+    TokenProvider clientCredentialsTokenProvider(
             @Value("${cf.client-id}") String clientId,
             @Value("${cf.client-secret}") String clientSecret) {
+        log.info("Using client_credentials grant (CF_CLIENT_ID / CF_CLIENT_SECRET)");
         return ClientCredentialsGrantTokenProvider.builder()
                 .clientId(clientId)
                 .clientSecret(clientSecret)
@@ -34,6 +43,19 @@ public class CloudFoundryConfig {
     }
 
     @Bean
+    @ConditionalOnExpression("!'${cf.username:}'.isEmpty()")
+    TokenProvider passwordGrantTokenProvider(
+            @Value("${cf.username}") String username,
+            @Value("${cf.password}") String password) {
+        log.info("Using password grant (CF_USERNAME / CF_PASSWORD)");
+        return PasswordGrantTokenProvider.builder()
+                .username(username)
+                .password(password)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnBean(TokenProvider.class)
     ReactorCloudFoundryClient cloudFoundryClient(DefaultConnectionContext connectionContext,
                                                  TokenProvider tokenProvider) {
         return ReactorCloudFoundryClient.builder()
@@ -43,6 +65,7 @@ public class CloudFoundryConfig {
     }
 
     @Bean
+    @ConditionalOnBean(TokenProvider.class)
     DefaultCloudFoundryOperations cloudFoundryOperations(ReactorCloudFoundryClient cloudFoundryClient,
                                                          DropshipProperties properties) {
         return DefaultCloudFoundryOperations.builder()
