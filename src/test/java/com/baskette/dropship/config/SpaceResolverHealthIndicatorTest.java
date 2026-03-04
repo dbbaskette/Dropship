@@ -1,41 +1,50 @@
 package com.baskette.dropship.config;
 
-import com.baskette.dropship.service.SpaceResolver;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.Status;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
 class SpaceResolverHealthIndicatorTest {
 
-    @Mock
-    private SpaceResolver spaceResolver;
-
     @Test
-    void healthReturnsUpWhenSpaceGuidResolved() {
-        when(spaceResolver.getSpaceGuid()).thenReturn("test-space-guid-123");
+    void healthReturnsUpWhenConfigPresent() {
+        DropshipProperties properties = new DropshipProperties(
+                "test-org", "test-space", "https://api.test.cf.example.com",
+                2048, 4096, 900, 512, 1024, 2048, "dropship-");
 
-        SpaceResolverHealthIndicator indicator = new SpaceResolverHealthIndicator(spaceResolver);
+        SpaceResolverHealthIndicator indicator = new SpaceResolverHealthIndicator(properties);
         Health health = indicator.health();
 
         assertThat(health.getStatus()).isEqualTo(Status.UP);
-        assertThat(health.getDetails()).containsEntry("spaceGuid", "test-space-guid-123");
+        assertThat(health.getDetails()).containsEntry("sandboxOrg", "test-org");
+        assertThat(health.getDetails()).containsEntry("sandboxSpace", "test-space");
     }
 
     @Test
-    void healthReturnsDownWhenSpaceGuidNotResolved() {
-        when(spaceResolver.getSpaceGuid()).thenThrow(new IllegalStateException("Space GUID has not been resolved yet"));
+    void healthReturnsDownWhenOrgBlank() {
+        DropshipProperties properties = new DropshipProperties(
+                "", "test-space", "https://api.test.cf.example.com",
+                2048, 4096, 900, 512, 1024, 2048, "dropship-");
 
-        SpaceResolverHealthIndicator indicator = new SpaceResolverHealthIndicator(spaceResolver);
+        SpaceResolverHealthIndicator indicator = new SpaceResolverHealthIndicator(properties);
         Health health = indicator.health();
 
         assertThat(health.getStatus()).isEqualTo(Status.DOWN);
-        assertThat(health.getDetails()).containsEntry("reason", "Space GUID not resolved");
+        assertThat(health.getDetails()).containsEntry("reason", "sandboxOrg or sandboxSpace not configured");
+    }
+
+    @Test
+    void healthReturnsDownWhenSpaceBlank() {
+        DropshipProperties properties = new DropshipProperties(
+                "test-org", "", "https://api.test.cf.example.com",
+                2048, 4096, 900, 512, 1024, 2048, "dropship-");
+
+        SpaceResolverHealthIndicator indicator = new SpaceResolverHealthIndicator(properties);
+        Health health = indicator.health();
+
+        assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+        assertThat(health.getDetails()).containsEntry("reason", "sandboxOrg or sandboxSpace not configured");
     }
 }

@@ -26,18 +26,16 @@ public class TaskService {
     static final Duration INITIAL_POLL_INTERVAL = Duration.ofMillis(500);
     static final Duration MAX_POLL_INTERVAL = Duration.ofSeconds(10);
 
-    private final ReactorCloudFoundryClient cfClient;
     private final DropshipProperties properties;
 
-    public TaskService(ReactorCloudFoundryClient cfClient,
-                       DropshipProperties properties) {
-        this.cfClient = cfClient;
+    public TaskService(DropshipProperties properties) {
         this.properties = properties;
     }
 
-    Mono<Void> setCurrentDroplet(String appGuid, String dropletGuid) {
+    Mono<Void> setCurrentDroplet(String appGuid, String dropletGuid,
+                                  ReactorCloudFoundryClient client) {
         log.info("Setting current droplet: appGuid={}, dropletGuid={}", appGuid, dropletGuid);
-        return cfClient.applicationsV3()
+        return client.applicationsV3()
                 .setCurrentDroplet(SetApplicationCurrentDropletRequest.builder()
                         .applicationId(appGuid)
                         .data(Relationship.builder()
@@ -50,7 +48,8 @@ public class TaskService {
     Mono<String> createTask(String appGuid, String command,
                              Integer memoryMb, Integer diskMb,
                              Integer timeoutSeconds,
-                             Map<String, String> environment) {
+                             Map<String, String> environment,
+                             ReactorCloudFoundryClient client) {
         int effectiveMemory = Math.min(
                 memoryMb != null ? memoryMb : properties.defaultTaskMemoryMb(),
                 properties.maxTaskMemoryMb());
@@ -64,7 +63,7 @@ public class TaskService {
         log.info("Creating task: appGuid={}, command={}, memory={}MB, disk={}MB, timeout={}s",
                 appGuid, command, effectiveMemory, effectiveDisk, effectiveTimeout);
 
-        return cfClient.tasks()
+        return client.tasks()
                 .create(CreateTaskRequest.builder()
                         .applicationId(appGuid)
                         .command(command)
@@ -79,15 +78,16 @@ public class TaskService {
 
     public Mono<TaskResult> runTask(String appGuid, String dropletGuid, String command,
                                      Integer memoryMb, Integer timeoutSeconds,
-                                     Map<String, String> environment) {
+                                     Map<String, String> environment,
+                                     ReactorCloudFoundryClient client) {
         long startTime = System.currentTimeMillis();
 
         log.info("Running task: appGuid={}, dropletGuid={}, command={}",
                 appGuid, dropletGuid, command);
 
-        return setCurrentDroplet(appGuid, dropletGuid)
-                .then(createTask(appGuid, command, memoryMb, null, timeoutSeconds, environment))
-                .flatMap(this::pollTask)
+        return setCurrentDroplet(appGuid, dropletGuid, client)
+                .then(createTask(appGuid, command, memoryMb, null, timeoutSeconds, environment, client))
+                .flatMap(taskGuid -> pollTask(taskGuid, client))
                 .map(taskResponse -> toTaskResult(taskResponse, appGuid, command, startTime))
                 .onErrorResume(error -> Mono.just(
                         toErrorResult(appGuid, command, startTime, error)))
@@ -101,8 +101,8 @@ public class TaskService {
                 });
     }
 
-    Mono<GetTaskResponse> pollTask(String taskGuid) {
-        return Mono.defer(() -> cfClient.tasks()
+    Mono<GetTaskResponse> pollTask(String taskGuid, ReactorCloudFoundryClient client) {
+        return Mono.defer(() -> client.tasks()
                 .get(GetTaskRequest.builder()
                         .taskId(taskGuid)
                         .build()))

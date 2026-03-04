@@ -102,7 +102,7 @@ class StagingServiceTest {
         properties = new DropshipProperties(
                 "test-org", "test-space", "https://api.test.cf.example.com",
                 2048, 4096, 900, 512, 1024, 2048, "dropship-");
-        stagingService = new StagingService(cfClient, properties, spaceResolver, cfOperations);
+        stagingService = new StagingService(properties, spaceResolver);
     }
 
     /** Stub log retrieval to return the given messages (or empty flux). */
@@ -128,7 +128,7 @@ class StagingServiceTest {
 
     @Test
     void createAppSetsNameAndSpaceRelationship() {
-        when(spaceResolver.getSpaceGuid()).thenReturn("space-guid-123");
+        when(spaceResolver.resolveSpace(cfClient)).thenReturn(Mono.just("space-guid-123"));
         when(cfClient.applicationsV3()).thenReturn(applicationsV3);
         when(applicationsV3.create(any(CreateApplicationRequest.class)))
                 .thenReturn(Mono.just(CreateApplicationResponse.builder()
@@ -140,7 +140,7 @@ class StagingServiceTest {
                         .updatedAt("2024-01-01T00:00:00Z")
                         .build()));
 
-        StepVerifier.create(stagingService.createApp("dropship-abc12345"))
+        StepVerifier.create(stagingService.createApp("dropship-abc12345", cfClient))
                 .expectNext("app-guid-456")
                 .verifyComplete();
 
@@ -173,7 +173,7 @@ class StagingServiceTest {
 
         byte[] sourceBundle = "test source content".getBytes();
 
-        StepVerifier.create(stagingService.createAndUploadPackage("app-guid-456", sourceBundle))
+        StepVerifier.create(stagingService.createAndUploadPackage("app-guid-456", sourceBundle, cfClient))
                 .expectNext("package-guid-789")
                 .verifyComplete();
 
@@ -197,7 +197,7 @@ class StagingServiceTest {
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
-        StepVerifier.create(stagingService.createBuild("package-guid-789", "java_buildpack"))
+        StepVerifier.create(stagingService.createBuild("package-guid-789", "java_buildpack", cfClient))
                 .expectNext("build-guid-101")
                 .verifyComplete();
 
@@ -221,7 +221,7 @@ class StagingServiceTest {
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
-        StepVerifier.create(stagingService.createBuild("package-guid-789", null))
+        StepVerifier.create(stagingService.createBuild("package-guid-789", null, cfClient))
                 .expectNext("build-guid-102")
                 .verifyComplete();
 
@@ -245,7 +245,7 @@ class StagingServiceTest {
                                 .build())
                         .build()));
 
-        StepVerifier.create(stagingService.pollBuild("build-guid-101"))
+        StepVerifier.create(stagingService.pollBuild("build-guid-101", cfClient))
                 .assertNext(response -> {
                     assertThat(response.getState()).isEqualTo(BuildState.STAGED);
                     assertThat(response.getDroplet().getId()).isEqualTo("droplet-guid-201");
@@ -267,7 +267,7 @@ class StagingServiceTest {
                         .createdAt("2024-01-01T00:00:00Z")
                         .build()));
 
-        StepVerifier.create(stagingService.pollBuild("build-guid-101"))
+        StepVerifier.create(stagingService.pollBuild("build-guid-101", cfClient))
                 .assertNext(response -> {
                     assertThat(response.getState()).isEqualTo(BuildState.FAILED);
                     assertThat(response.getError()).isEqualTo("Buildpack compilation failed");
@@ -307,7 +307,7 @@ class StagingServiceTest {
                                 .build())
                         .build()));
 
-        StepVerifier.create(stagingService.pollBuild("build-guid-101"))
+        StepVerifier.create(stagingService.pollBuild("build-guid-101", cfClient))
                 .assertNext(response -> {
                     assertThat(response.getState()).isEqualTo(BuildState.STAGED);
                     assertThat(response.getDroplet().getId()).isEqualTo("droplet-guid-201");
@@ -318,7 +318,7 @@ class StagingServiceTest {
 
     @Test
     void stageReturnsSuccessResult() {
-        when(spaceResolver.getSpaceGuid()).thenReturn("space-guid-123");
+        when(spaceResolver.resolveSpace(cfClient)).thenReturn(Mono.just("space-guid-123"));
         when(cfClient.applicationsV3()).thenReturn(applicationsV3);
         when(applicationsV3.create(any(CreateApplicationRequest.class)))
                 .thenReturn(Mono.just(CreateApplicationResponse.builder()
@@ -374,7 +374,7 @@ class StagingServiceTest {
         stubStagingLogs("-----> Downloading JDK", "-----> Build succeeded");
 
         StepVerifier.create(stagingService.stage(
-                        "test source".getBytes(), "java_buildpack", 512, 1024))
+                        "test source".getBytes(), "java_buildpack", 512, 1024, cfClient, cfOperations))
                 .assertNext(result -> {
                     assertThat(result.success()).isTrue();
                     assertThat(result.dropletGuid()).isEqualTo("droplet-guid-201");
@@ -391,7 +391,7 @@ class StagingServiceTest {
 
     @Test
     void stageReturnsFailureResultOnBuildFailure() {
-        when(spaceResolver.getSpaceGuid()).thenReturn("space-guid-123");
+        when(spaceResolver.resolveSpace(cfClient)).thenReturn(Mono.just("space-guid-123"));
         when(cfClient.applicationsV3()).thenReturn(applicationsV3);
         when(applicationsV3.create(any(CreateApplicationRequest.class)))
                 .thenReturn(Mono.just(CreateApplicationResponse.builder()
@@ -445,7 +445,7 @@ class StagingServiceTest {
         stubStagingLogs("-----> Compilation error: missing dependency");
 
         StepVerifier.create(stagingService.stage(
-                        "test source".getBytes(), null, null, null))
+                        "test source".getBytes(), null, null, null, cfClient, cfOperations))
                 .assertNext(result -> {
                     assertThat(result.success()).isFalse();
                     assertThat(result.dropletGuid()).isNull();
@@ -459,13 +459,13 @@ class StagingServiceTest {
 
     @Test
     void stageReturnsErrorResultOnAppCreationFailure() {
-        when(spaceResolver.getSpaceGuid()).thenReturn("space-guid-123");
+        when(spaceResolver.resolveSpace(cfClient)).thenReturn(Mono.just("space-guid-123"));
         when(cfClient.applicationsV3()).thenReturn(applicationsV3);
         when(applicationsV3.create(any(CreateApplicationRequest.class)))
                 .thenReturn(Mono.error(new RuntimeException("CF API error")));
 
         StepVerifier.create(stagingService.stage(
-                        "test source".getBytes(), "java_buildpack", 512, 1024))
+                        "test source".getBytes(), "java_buildpack", 512, 1024, cfClient, cfOperations))
                 .assertNext(result -> {
                     assertThat(result.success()).isFalse();
                     assertThat(result.errorMessage()).contains("CF API error");
@@ -476,7 +476,7 @@ class StagingServiceTest {
 
     @Test
     void stageUsesAutoDetectWhenBuildpackIsNull() {
-        when(spaceResolver.getSpaceGuid()).thenReturn("space-guid-123");
+        when(spaceResolver.resolveSpace(cfClient)).thenReturn(Mono.just("space-guid-123"));
         when(cfClient.applicationsV3()).thenReturn(applicationsV3);
         when(applicationsV3.create(any(CreateApplicationRequest.class)))
                 .thenReturn(Mono.just(CreateApplicationResponse.builder()
@@ -532,7 +532,7 @@ class StagingServiceTest {
         stubStagingLogs();
 
         StepVerifier.create(stagingService.stage(
-                        "test source".getBytes(), null, null, null))
+                        "test source".getBytes(), null, null, null, cfClient, cfOperations))
                 .assertNext(result -> {
                     assertThat(result.success()).isTrue();
                     assertThat(result.buildpack()).isNull();
@@ -546,7 +546,7 @@ class StagingServiceTest {
 
     @Test
     void stageReturnsTimeoutErrorWhenBuildNeverCompletes() {
-        when(spaceResolver.getSpaceGuid()).thenReturn("space-guid-123");
+        when(spaceResolver.resolveSpace(cfClient)).thenReturn(Mono.just("space-guid-123"));
         when(cfClient.applicationsV3()).thenReturn(applicationsV3);
         when(applicationsV3.create(any(CreateApplicationRequest.class)))
                 .thenReturn(Mono.just(CreateApplicationResponse.builder()
@@ -597,7 +597,7 @@ class StagingServiceTest {
                         .build()));
 
         StepVerifier.withVirtualTime(() -> stagingService.stage(
-                        "test source".getBytes(), "java_buildpack", 512, 1024))
+                        "test source".getBytes(), "java_buildpack", 512, 1024, cfClient, cfOperations))
                 .thenAwait(Duration.ofMinutes(6))
                 .assertNext(result -> {
                     assertThat(result.success()).isFalse();

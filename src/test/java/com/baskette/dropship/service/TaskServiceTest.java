@@ -57,7 +57,7 @@ class TaskServiceTest {
         properties = new DropshipProperties(
                 "test-org", "test-space", "https://api.test.cf.example.com",
                 2048, 4096, 900, 512, 1024, 2048, "dropship-");
-        taskService = new TaskService(cfClient, properties);
+        taskService = new TaskService(properties);
     }
 
     @Test
@@ -68,7 +68,7 @@ class TaskServiceTest {
                         .data(Relationship.builder().id("droplet-guid-123").build())
                         .build()));
 
-        StepVerifier.create(taskService.setCurrentDroplet("app-guid-456", "droplet-guid-123"))
+        StepVerifier.create(taskService.setCurrentDroplet("app-guid-456", "droplet-guid-123", cfClient))
                 .verifyComplete();
 
         verify(applicationsV3).setCurrentDroplet(dropletRequestCaptor.capture());
@@ -83,7 +83,7 @@ class TaskServiceTest {
         when(applicationsV3.setCurrentDroplet(any(SetApplicationCurrentDropletRequest.class)))
                 .thenReturn(Mono.error(new RuntimeException("CF API error")));
 
-        StepVerifier.create(taskService.setCurrentDroplet("app-guid-456", "droplet-guid-123"))
+        StepVerifier.create(taskService.setCurrentDroplet("app-guid-456", "droplet-guid-123", cfClient))
                 .expectError(RuntimeException.class)
                 .verify();
     }
@@ -97,7 +97,7 @@ class TaskServiceTest {
                 .thenReturn(Mono.just(createTaskResponse("task-guid-1")));
 
         StepVerifier.create(taskService.createTask(
-                        "app-guid-1", "echo hello", null, null, null, null))
+                        "app-guid-1", "echo hello", null, null, null, null, cfClient))
                 .expectNext("task-guid-1")
                 .verifyComplete();
 
@@ -113,7 +113,7 @@ class TaskServiceTest {
                 .thenReturn(Mono.just(createTaskResponse("task-guid-2")));
 
         StepVerifier.create(taskService.createTask(
-                        "app-guid-1", "echo hello", 9999, null, null, null))
+                        "app-guid-1", "echo hello", 9999, null, null, null, cfClient))
                 .expectNext("task-guid-2")
                 .verifyComplete();
 
@@ -128,7 +128,7 @@ class TaskServiceTest {
                 .thenReturn(Mono.just(createTaskResponse("task-guid-3")));
 
         StepVerifier.create(taskService.createTask(
-                        "app-guid-1", "echo hello", null, 99999, null, null))
+                        "app-guid-1", "echo hello", null, 99999, null, null, cfClient))
                 .expectNext("task-guid-3")
                 .verifyComplete();
 
@@ -144,7 +144,7 @@ class TaskServiceTest {
 
         // With null timeout, should use default of 300 (clamped to max 900)
         StepVerifier.create(taskService.createTask(
-                        "app-guid-1", "echo hello", null, null, null, null))
+                        "app-guid-1", "echo hello", null, null, null, null, cfClient))
                 .expectNext("task-guid-5")
                 .verifyComplete();
     }
@@ -155,7 +155,7 @@ class TaskServiceTest {
         DropshipProperties lowTimeoutProps = new DropshipProperties(
                 "test-org", "test-space", "https://api.test.cf.example.com",
                 2048, 4096, 60, 512, 1024, 2048, "dropship-");
-        TaskService service = new TaskService(cfClient, lowTimeoutProps);
+        TaskService service = new TaskService(lowTimeoutProps);
 
         when(cfClient.tasks()).thenReturn(tasks);
         when(tasks.create(any(CreateTaskRequest.class)))
@@ -163,7 +163,7 @@ class TaskServiceTest {
 
         // Request 300s timeout, but max is 60s — should be clamped
         StepVerifier.create(service.createTask(
-                        "app-guid-1", "echo hello", null, null, 300, null))
+                        "app-guid-1", "echo hello", null, null, 300, null, cfClient))
                 .expectNext("task-guid-6")
                 .verifyComplete();
     }
@@ -177,7 +177,7 @@ class TaskServiceTest {
         Map<String, String> env = Map.of("KEY1", "value1", "KEY2", "value2");
 
         StepVerifier.create(taskService.createTask(
-                        "app-guid-1", "echo hello", null, null, null, env))
+                        "app-guid-1", "echo hello", null, null, null, env, cfClient))
                 .expectNext("task-guid-7")
                 .verifyComplete();
     }
@@ -189,7 +189,7 @@ class TaskServiceTest {
                 .thenReturn(Mono.just(createTaskResponse("task-guid-4")));
 
         StepVerifier.create(taskService.createTask(
-                        "app-guid-99", "rake db:migrate", 256, 512, null, null))
+                        "app-guid-99", "rake db:migrate", 256, 512, null, null, cfClient))
                 .expectNext("task-guid-4")
                 .verifyComplete();
 
@@ -209,7 +209,7 @@ class TaskServiceTest {
         when(tasks.get(any(GetTaskRequest.class)))
                 .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.SUCCEEDED)));
 
-        StepVerifier.create(taskService.pollTask("task-guid-1"))
+        StepVerifier.create(taskService.pollTask("task-guid-1", cfClient))
                 .assertNext(response -> {
                     assertThat(response.getState()).isEqualTo(TaskState.SUCCEEDED);
                     assertThat(response.getId()).isEqualTo("task-guid-1");
@@ -223,7 +223,7 @@ class TaskServiceTest {
         when(tasks.get(any(GetTaskRequest.class)))
                 .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.FAILED)));
 
-        StepVerifier.create(taskService.pollTask("task-guid-1"))
+        StepVerifier.create(taskService.pollTask("task-guid-1", cfClient))
                 .assertNext(response -> {
                     assertThat(response.getState()).isEqualTo(TaskState.FAILED);
                     assertThat(response.getId()).isEqualTo("task-guid-1");
@@ -239,7 +239,7 @@ class TaskServiceTest {
                 .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.RUNNING)))
                 .thenReturn(Mono.just(getTaskResponse("task-guid-1", TaskState.SUCCEEDED)));
 
-        StepVerifier.create(taskService.pollTask("task-guid-1"))
+        StepVerifier.create(taskService.pollTask("task-guid-1", cfClient))
                 .assertNext(response -> {
                     assertThat(response.getState()).isEqualTo(TaskState.SUCCEEDED);
                     assertThat(response.getId()).isEqualTo("task-guid-1");
@@ -270,7 +270,7 @@ class TaskServiceTest {
 
         StepVerifier.create(taskService.runTask(
                         "app-guid-456", "droplet-guid-123", "echo hello",
-                        null, null, null))
+                        null, null, null, cfClient))
                 .assertNext(result -> {
                     assertThat(result.taskGuid()).isEqualTo("task-guid-1");
                     assertThat(result.appGuid()).isEqualTo("app-guid-456");
@@ -303,7 +303,7 @@ class TaskServiceTest {
 
         StepVerifier.create(taskService.runTask(
                         "app-guid-456", "droplet-guid-123", "bad-command",
-                        null, null, null))
+                        null, null, null, cfClient))
                 .assertNext(result -> {
                     assertThat(result.taskGuid()).isEqualTo("task-guid-1");
                     assertThat(result.appGuid()).isEqualTo("app-guid-456");
@@ -329,7 +329,7 @@ class TaskServiceTest {
 
         StepVerifier.create(taskService.runTask(
                         "app-guid-456", "droplet-guid-123", "echo hello",
-                        null, null, null))
+                        null, null, null, cfClient))
                 .assertNext(result -> {
                     assertThat(result.state()).isEqualTo(TaskResult.State.FAILED);
                     assertThat(result.exitCode()).isEqualTo(1);
@@ -360,7 +360,7 @@ class TaskServiceTest {
 
         StepVerifier.withVirtualTime(() -> taskService.runTask(
                         "app-guid-456", "droplet-guid-123", "echo hello",
-                        null, null, null))
+                        null, null, null, cfClient))
                 .thenAwait(Duration.ofSeconds(901))
                 .assertNext(result -> {
                     assertThat(result.state()).isEqualTo(TaskResult.State.FAILED);
