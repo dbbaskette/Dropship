@@ -19,14 +19,12 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
 import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -56,7 +54,7 @@ class SpaceResolverTest {
         properties = new DropshipProperties(
                 "test-org", "test-space", "https://api.test.cf.example.com",
                 2048, 4096, 900, 512, 1024, 2048, "dropship-");
-        spaceResolver = new SpaceResolver(cloudFoundryClient, properties);
+        spaceResolver = new SpaceResolver(properties);
     }
 
     @Test
@@ -82,9 +80,9 @@ class SpaceResolverTest {
                                 .build())
                         .build()));
 
-        spaceResolver.resolve();
-
-        assertThat(spaceResolver.getSpaceGuid()).isEqualTo("space-guid-456");
+        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient))
+                .expectNext("space-guid-456")
+                .verifyComplete();
 
         verify(organizationsV3).list(orgRequestCaptor.capture());
         assertThat(orgRequestCaptor.getValue().getNames()).containsExactly("test-org");
@@ -95,22 +93,23 @@ class SpaceResolverTest {
     }
 
     @Test
-    void logsWarningWhenOrgNotFound() {
+    void errorsWhenOrgNotFound() {
         when(cloudFoundryClient.organizationsV3()).thenReturn(organizationsV3);
         when(organizationsV3.list(any(ListOrganizationsRequest.class)))
                 .thenReturn(Mono.just(ListOrganizationsResponse.builder()
                         .resources(Collections.emptyList())
                         .build()));
 
-        assertThatCode(() -> spaceResolver.resolve()).doesNotThrowAnyException();
-
-        assertThatThrownBy(() -> spaceResolver.getSpaceGuid())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not been resolved");
+        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient))
+                .expectErrorSatisfies(ex -> {
+                    assertThat(ex).isInstanceOf(IllegalStateException.class);
+                    assertThat(ex.getMessage()).contains("Organization not found");
+                })
+                .verify();
     }
 
     @Test
-    void logsWarningWhenSpaceNotFound() {
+    void errorsWhenSpaceNotFound() {
         when(cloudFoundryClient.organizationsV3()).thenReturn(organizationsV3);
         when(organizationsV3.list(any(ListOrganizationsRequest.class)))
                 .thenReturn(Mono.just(ListOrganizationsResponse.builder()
@@ -128,99 +127,25 @@ class SpaceResolverTest {
                         .resources(Collections.emptyList())
                         .build()));
 
-        assertThatCode(() -> spaceResolver.resolve()).doesNotThrowAnyException();
-
-        assertThatThrownBy(() -> spaceResolver.getSpaceGuid())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not been resolved");
+        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient))
+                .expectErrorSatisfies(ex -> {
+                    assertThat(ex).isInstanceOf(IllegalStateException.class);
+                    assertThat(ex.getMessage()).contains("Space not found");
+                })
+                .verify();
     }
 
     @Test
-    void getSpaceGuidThrowsBeforeResolve() {
-        assertThatThrownBy(() -> spaceResolver.getSpaceGuid())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not been resolved");
-    }
-
-    @Test
-    void handlesCfConnectionError() {
+    void propagatesCfError() {
         when(cloudFoundryClient.organizationsV3()).thenReturn(organizationsV3);
         when(organizationsV3.list(any(ListOrganizationsRequest.class)))
                 .thenReturn(Mono.error(new RuntimeException("Connection refused")));
 
-        assertThatCode(() -> spaceResolver.resolve()).doesNotThrowAnyException();
-
-        assertThatThrownBy(() -> spaceResolver.getSpaceGuid())
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not been resolved");
-    }
-
-    @Test
-    void reResolvesAfterConnectionFailure() {
-        // First call fails with connection error
-        when(cloudFoundryClient.organizationsV3()).thenReturn(organizationsV3);
-        when(organizationsV3.list(any(ListOrganizationsRequest.class)))
-                .thenReturn(Mono.error(new RuntimeException("Connection refused")));
-
-        spaceResolver.resolve();
-
-        assertThatThrownBy(() -> spaceResolver.getSpaceGuid())
-                .isInstanceOf(IllegalStateException.class);
-
-        // Second call succeeds
-        reset(organizationsV3);
-        when(organizationsV3.list(any(ListOrganizationsRequest.class)))
-                .thenReturn(Mono.just(ListOrganizationsResponse.builder()
-                        .resource(OrganizationResource.builder()
-                                .id("org-guid-123")
-                                .name("test-org")
-                                .createdAt("2024-01-01T00:00:00Z")
-                                .metadata(Metadata.builder().build())
-                                .build())
-                        .build()));
-
-        when(cloudFoundryClient.spacesV3()).thenReturn(spacesV3);
-        when(spacesV3.list(any(ListSpacesRequest.class)))
-                .thenReturn(Mono.just(ListSpacesResponse.builder()
-                        .resource(SpaceResource.builder()
-                                .id("space-guid-456")
-                                .name("test-space")
-                                .createdAt("2024-01-01T00:00:00Z")
-                                .build())
-                        .build()));
-
-        spaceResolver.resolve();
-
-        assertThat(spaceResolver.getSpaceGuid()).isEqualTo("space-guid-456");
-    }
-
-    @Test
-    void cachesResolvedGuid() {
-        when(cloudFoundryClient.organizationsV3()).thenReturn(organizationsV3);
-        when(organizationsV3.list(any(ListOrganizationsRequest.class)))
-                .thenReturn(Mono.just(ListOrganizationsResponse.builder()
-                        .resource(OrganizationResource.builder()
-                                .id("org-guid-123")
-                                .name("test-org")
-                                .createdAt("2024-01-01T00:00:00Z")
-                                .metadata(Metadata.builder().build())
-                                .build())
-                        .build()));
-
-        when(cloudFoundryClient.spacesV3()).thenReturn(spacesV3);
-        when(spacesV3.list(any(ListSpacesRequest.class)))
-                .thenReturn(Mono.just(ListSpacesResponse.builder()
-                        .resource(SpaceResource.builder()
-                                .id("space-guid-456")
-                                .name("test-space")
-                                .createdAt("2024-01-01T00:00:00Z")
-                                .build())
-                        .build()));
-
-        spaceResolver.resolve();
-
-        String first = spaceResolver.getSpaceGuid();
-        String second = spaceResolver.getSpaceGuid();
-        assertThat(first).isSameAs(second);
+        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient))
+                .expectErrorSatisfies(ex -> {
+                    assertThat(ex).isInstanceOf(RuntimeException.class);
+                    assertThat(ex.getMessage()).isEqualTo("Connection refused");
+                })
+                .verify();
     }
 }
