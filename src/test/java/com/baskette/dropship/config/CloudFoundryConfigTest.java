@@ -1,52 +1,71 @@
 package com.baskette.dropship.config;
 
-import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
 import org.cloudfoundry.reactor.DefaultConnectionContext;
-import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
+import org.cloudfoundry.reactor.TokenProvider;
 import org.cloudfoundry.reactor.tokenprovider.ClientCredentialsGrantTokenProvider;
+import org.cloudfoundry.reactor.tokenprovider.PasswordGrantTokenProvider;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
-@ActiveProfiles("test")
 class CloudFoundryConfigTest {
 
-    @Autowired
-    private DefaultConnectionContext connectionContext;
+    @Nested
+    @SpringBootTest
+    @ActiveProfiles("test")
+    class ClientCredentialsMode {
 
-    @Autowired
-    private ClientCredentialsGrantTokenProvider tokenProvider;
+        @Autowired
+        private DefaultConnectionContext connectionContext;
 
-    @Autowired
-    private ReactorCloudFoundryClient cloudFoundryClient;
+        @Autowired
+        private TokenProvider tokenProvider;
 
-    @Autowired
-    private DefaultCloudFoundryOperations cloudFoundryOperations;
+        @Test
+        void connectionContextBeanIsCreated() {
+            assertThat(connectionContext).isNotNull();
+            assertThat(connectionContext.getApiHost()).isEqualTo("api.test.cf.example.com");
+            assertThat(connectionContext.getSkipSslValidation()).hasValue(true);
+        }
 
-    @Test
-    void connectionContextBeanIsCreated() {
-        assertThat(connectionContext).isNotNull();
-        assertThat(connectionContext.getApiHost()).isEqualTo("api.test.cf.example.com");
-        assertThat(connectionContext.getSkipSslValidation()).hasValue(true);
+        @Test
+        void clientCredentialsTokenProviderIsActive() {
+            assertThat(tokenProvider).isInstanceOf(ClientCredentialsGrantTokenProvider.class);
+        }
+
+        @Test
+        void tokenProviderIsNotPasswordGrant() {
+            assertThat(tokenProvider).isNotInstanceOf(PasswordGrantTokenProvider.class);
+        }
     }
 
-    @Test
-    void tokenProviderBeanIsCreated() {
-        assertThat(tokenProvider).isNotNull();
-    }
+    @Nested
+    @SpringBootTest
+    @ActiveProfiles("test")
+    @TestPropertySource(properties = {
+            "cf.client-id=",
+            "cf.username=test-user",
+            "cf.password=test-pass"
+    })
+    class PasswordGrantMode {
 
-    @Test
-    void cloudFoundryClientBeanIsCreated() {
-        assertThat(cloudFoundryClient).isNotNull();
-    }
+        @Autowired
+        private TokenProvider tokenProvider;
 
-    @Test
-    void cloudFoundryOperationsBeanIsCreated() {
-        assertThat(cloudFoundryOperations).isNotNull();
+        @Test
+        void passwordGrantTokenProviderIsActive() {
+            assertThat(tokenProvider).isInstanceOf(PasswordGrantTokenProvider.class);
+        }
+
+        @Test
+        void tokenProviderIsNotClientCredentials() {
+            assertThat(tokenProvider).isNotInstanceOf(ClientCredentialsGrantTokenProvider.class);
+        }
     }
 
     @Test
