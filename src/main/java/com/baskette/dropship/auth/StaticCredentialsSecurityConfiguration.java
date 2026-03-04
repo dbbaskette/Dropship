@@ -1,4 +1,4 @@
-package com.baskette.dropship.config;
+package com.baskette.dropship.auth;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
