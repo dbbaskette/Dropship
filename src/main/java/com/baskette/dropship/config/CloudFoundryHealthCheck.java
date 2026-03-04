@@ -5,11 +5,13 @@ import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
 import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 @Component
+@ConditionalOnBean(ReactorCloudFoundryClient.class)
 public class CloudFoundryHealthCheck {
 
     private static final Logger log = LoggerFactory.getLogger(CloudFoundryHealthCheck.class);

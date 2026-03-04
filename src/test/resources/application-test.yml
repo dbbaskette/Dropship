@@ -12,6 +12,8 @@ spring:
 cf:
   client-id: test-client-id
   client-secret: test-client-secret
+  username:
+  password:
   skip-ssl-validation: true
 
 dropship:
