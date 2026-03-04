@@ -15,12 +15,17 @@ applications:
       JBP_CONFIG_OPEN_JDK_JRE: '{ jre: { version: 21.+ } }'
       SPRING_PROFILES_ACTIVE: cloud
       # ------------------------------------------------------------------
-      # CF UAA client credentials — optional (admin/default fallback only).
-      # Per-user credentials are supplied via connect_cf at runtime.
-      # Set these via `cf set-env` or a vars file — do not commit secrets.
+      # CF authentication — choose ONE credential pair.
+      # Client credentials (Option A) takes precedence if both are set.
+      # Set via `cf set-env` or a vars file — do not commit secrets.
+      # See docs/cf-setup.md and vars.yml.example for details.
       # ------------------------------------------------------------------
+      # Option A: Client credentials (production / service accounts)
       CF_CLIENT_ID: ((cf-client-id))
       CF_CLIENT_SECRET: ((cf-client-secret))
+      # Option B: Password grant (dev/testing with a personal account)
+      # CF_USERNAME: ((cf-username))
+      # CF_PASSWORD: ((cf-password))
       # ------------------------------------------------------------------
       # CF API URL.  The cloud profile auto-detects this from
       # VCAP_APPLICATION, so this env var acts as an explicit override.

@@ -2,17 +2,27 @@
 
 Step-by-step runbook for preparing a Cloud Foundry foundation to support Dropship.
 After completing these steps, Dropship will be able to stage code and run tasks
-in an isolated sandbox space using UAA client credentials.
+in an isolated sandbox space.
+
+Dropship supports two authentication modes:
+
+| Mode | Environment Variables | OAuth2 Grant Type | When to Use |
+|---|---|---|---|
+| **Client credentials** | `CF_CLIENT_ID` / `CF_CLIENT_SECRET` | `client_credentials` | Production and service-account deployments. The UAA client authenticates directly — no user account required. |
+| **Password grant** | `CF_USERNAME` / `CF_PASSWORD` | `password` | Dev/testing with a personal CF user account. Simpler setup — no UAA admin access needed. |
+
+**Precedence:** If both sets of variables are provided, client credentials wins
+(`@Primary`). If neither is set, Dropship starts without CF connectivity.
 
 ---
 
 ## Prerequisites
 
 - `cf` CLI v8+ authenticated as an admin user
-- `uaac` CLI (from the `cf-uaac` gem: `gem install cf-uaac`)
-- Admin access to the CF foundation's UAA
+- For client credentials mode: `uaac` CLI (from the `cf-uaac` gem: `gem install cf-uaac`) and admin access to the CF foundation's UAA
+- For password grant mode: an existing CF user account with SpaceDeveloper role in the sandbox space
 
-Target the UAA server before running `uaac` commands:
+If using client credentials, target the UAA server before running `uaac` commands:
 
 ```bash
 uaac target https://uaa.sys.YOUR-DOMAIN --skip-ssl-validation
@@ -21,11 +31,15 @@ uaac token client get admin -s <ADMIN_CLIENT_SECRET>
 
 ---
 
-## 1. Create the UAA Client
+## 1. Authentication Setup
 
-Dropship authenticates to the CF API using the `client_credentials` OAuth2 grant.
-Create a dedicated UAA client with the minimum authorities required for app staging
-and task execution.
+Choose one of the two authentication modes below.
+
+### Option A: Client Credentials (Recommended)
+
+Create a dedicated UAA client that authenticates via the `client_credentials` OAuth2
+grant. This is the recommended mode for production and shared deployments because
+it uses a service account — no human user is involved.
 
 ```bash
 uaac client add dropship-client \
@@ -51,6 +65,24 @@ space (see Step 4). In that case the authorities line becomes:
 ```bash
   --authorities "cloud_controller.read,cloud_controller.write"
 ```
+
+### Option B: Password Grant (Dev/Testing)
+
+If you already have a CF user account with the necessary permissions, you can skip
+the UAA client setup entirely and authenticate with your username and password using
+the `password` OAuth2 grant.
+
+**Requirements:**
+
+- The user must have the **SpaceDeveloper** role in the sandbox space (see Step 4)
+- The CF foundation's UAA must allow password grant for the `cf` client
+
+No `uaac` commands are needed for this option. Simply set the environment variables
+in Step 6 (Option B) and ensure your user has the correct space role.
+
+> **When to use:** Local development, personal testing, or environments where you
+> do not have UAA admin access to create clients. Not recommended for production
+> because it ties Dropship to a personal user account.
 
 ---
 
@@ -106,11 +138,14 @@ cf set-space-quota agent-sandbox dropship-sandbox-quota
 
 ## 4. Assign Space Roles
 
-**If using `cloud_controller.admin` authority (Step 1 default):** No space role
-assignment is needed. The admin authority grants full access to all orgs and spaces.
+### Client credentials with `cloud_controller.admin` (Step 1 Option A default)
 
-**If using the least-privilege alternative:** Create a dummy user for the client
-and assign SpaceDeveloper:
+No space role assignment is needed. The admin authority grants full access to all
+orgs and spaces.
+
+### Client credentials — least-privilege alternative
+
+Create a dummy user for the client and assign SpaceDeveloper:
 
 ```bash
 cf set-space-role dropship-client ai-workloads agent-sandbox SpaceDeveloper --origin client
@@ -120,6 +155,17 @@ cf set-space-role dropship-client ai-workloads agent-sandbox SpaceDeveloper --or
 > than a UAA user. Requires CF CLI v8.8+. On older CLIs, the client credentials
 > grant with `cloud_controller.read` and `cloud_controller.write` authorities plus
 > a SpaceDeveloper role is equivalent.
+
+### Password grant (Step 1 Option B)
+
+Assign your CF user the SpaceDeveloper role in the sandbox space:
+
+```bash
+cf set-space-role YOUR_USERNAME ai-workloads agent-sandbox SpaceDeveloper
+```
+
+This is required — the password grant authenticates as a regular user, so the user
+must have explicit roles in the target space.
 
 ---
 
@@ -196,7 +242,10 @@ For tighter control, restrict egress to specific registry IP ranges:
 
 ## 6. Configure Dropship Environment Variables
 
-Set the environment variables that Dropship reads at startup:
+Set the environment variables that Dropship reads at startup. Choose the set that
+matches your authentication mode from Step 1.
+
+### Option A: Client Credentials
 
 ```bash
 export CF_API_URL="https://api.sys.YOUR-DOMAIN"
@@ -207,7 +256,27 @@ export DROPSHIP_SANDBOX_ORG="ai-workloads"
 export DROPSHIP_SANDBOX_SPACE="agent-sandbox"
 ```
 
-Or, if deploying Dropship as a CF app, set them in `manifest.yml`:
+### Option B: Password Grant
+
+```bash
+export CF_API_URL="https://api.sys.YOUR-DOMAIN"
+export CF_USERNAME="your-cf-username"
+export CF_PASSWORD="your-cf-password"
+export CF_SKIP_SSL_VALIDATION="false"
+export DROPSHIP_SANDBOX_ORG="ai-workloads"
+export DROPSHIP_SANDBOX_SPACE="agent-sandbox"
+```
+
+> Do not set both `CF_CLIENT_ID` and `CF_USERNAME` at the same time. If both are
+> present, client credentials takes precedence and the password grant variables are
+> ignored.
+
+### Deploying as a CF App
+
+If deploying Dropship as a CF app, set credentials via `manifest.yml` or a vars
+file. See `vars.yml.example` for both credential options.
+
+Client credentials example:
 
 ```yaml
 applications:
@@ -216,6 +285,20 @@ applications:
       CF_API_URL: https://api.sys.YOUR-DOMAIN
       CF_CLIENT_ID: dropship-client
       CF_CLIENT_SECRET: ((dropship-client-secret))
+      CF_SKIP_SSL_VALIDATION: "false"
+      DROPSHIP_SANDBOX_ORG: ai-workloads
+      DROPSHIP_SANDBOX_SPACE: agent-sandbox
+```
+
+Password grant example:
+
+```yaml
+applications:
+  - name: dropship-mcp
+    env:
+      CF_API_URL: https://api.sys.YOUR-DOMAIN
+      CF_USERNAME: ((cf-username))
+      CF_PASSWORD: ((cf-password))
       CF_SKIP_SSL_VALIDATION: "false"
       DROPSHIP_SANDBOX_ORG: ai-workloads
       DROPSHIP_SANDBOX_SPACE: agent-sandbox
@@ -239,7 +322,9 @@ All available Dropship configuration properties with their defaults:
 
 Run these commands to confirm the setup is correct.
 
-### Verify the UAA client exists
+### Verify credentials
+
+**Client credentials:** Verify the UAA client exists:
 
 ```bash
 uaac client get dropship-client
@@ -247,6 +332,12 @@ uaac client get dropship-client
 
 Expected output includes `authorized_grant_types: client_credentials` and the
 authorities from Step 1.
+
+**Password grant:** Verify the user can log in:
+
+```bash
+cf auth YOUR_USERNAME YOUR_PASSWORD
+```
 
 ### Verify the org, space, and quota
 
@@ -268,15 +359,6 @@ cf security-group deny-all
 Confirm `deny-all` is bound to `ai-workloads/agent-sandbox` for the `running`
 lifecycle.
 
-### Verify the client can authenticate
-
-```bash
-uaac token client get dropship-client -s <THE_SECRET>
-uaac context
-```
-
-The token should show the expected `authorities`.
-
 ### End-to-end connectivity test
 
 Start Dropship and check the logs for successful space resolution:
@@ -294,9 +376,9 @@ Resolved space GUID: <guid> for org=ai-workloads, space=agent-sandbox
 If you see `Unable to resolve space GUID`, check that:
 
 1. `CF_API_URL` is reachable from the Dropship host
-2. `CF_CLIENT_ID` and `CF_CLIENT_SECRET` are correct
+2. Your credentials are correct (`CF_CLIENT_ID`/`CF_CLIENT_SECRET` or `CF_USERNAME`/`CF_PASSWORD`)
 3. The org and space names match exactly (case-sensitive)
-4. The client has the required authorities or space role
+4. The identity has the required authorities or space role
 
 ---
 
@@ -313,12 +395,15 @@ early.
 
 ### Manifest Environment Variables
 
-Verify all required env vars are set (via manifest, `cf set-env`, or a vars file):
+Verify the required env vars are set (via manifest, `cf set-env`, or a vars file).
+You need **one** of the two credential pairs:
 
 | Variable | Required | Notes |
 |---|---|---|
-| `CF_CLIENT_ID` | Yes | UAA client ID from Step 1 |
-| `CF_CLIENT_SECRET` | Yes | UAA client secret from Step 1 |
+| `CF_CLIENT_ID` | Option A | UAA client ID from Step 1 |
+| `CF_CLIENT_SECRET` | Option A | UAA client secret from Step 1 |
+| `CF_USERNAME` | Option B | CF user account username |
+| `CF_PASSWORD` | Option B | CF user account password |
 | `CF_API_URL` | Recommended | Auto-detected from VCAP on CF, but set explicitly as a fallback |
 | `DROPSHIP_SANDBOX_ORG` | Yes | Must match an existing CF org |
 | `DROPSHIP_SANDBOX_SPACE` | Yes | Must match an existing CF space in the org above |
@@ -328,7 +413,9 @@ Verify all required env vars are set (via manifest, `cf set-env`, or a vars file
 ### Cloud Foundry Prerequisites
 
 - [ ] Target foundation is reachable: `cf api $CF_API_URL`
-- [ ] UAA client exists and can authenticate: `uaac token client get $CF_CLIENT_ID -s $CF_CLIENT_SECRET`
+- [ ] Credentials can authenticate (one of):
+  - Client credentials: `uaac token client get $CF_CLIENT_ID -s $CF_CLIENT_SECRET`
+  - Password grant: `cf auth $CF_USERNAME $CF_PASSWORD`
 - [ ] Sandbox org exists: `cf org $DROPSHIP_SANDBOX_ORG`
 - [ ] Sandbox space exists: `cf space $DROPSHIP_SANDBOX_SPACE`
 - [ ] Space quota is assigned (see Step 3)
@@ -361,6 +448,8 @@ If the app starts but the health check fails, check that:
 
 ## Quick Reference
 
+### Client Credentials Setup
+
 ```bash
 # Full setup in one block (replace placeholders)
 
@@ -385,4 +474,25 @@ echo '[]' > /tmp/deny-all.json
 cf create-security-group deny-all /tmp/deny-all.json
 cf bind-security-group deny-all ai-workloads agent-sandbox --lifecycle running
 cf bind-security-group deny-all ai-workloads agent-sandbox --lifecycle staging
+```
+
+### Password Grant Setup
+
+```bash
+# Minimal setup for dev/testing (replace placeholders)
+
+cf create-org ai-workloads
+cf create-space agent-sandbox -o ai-workloads
+
+cf set-space-role YOUR_USERNAME ai-workloads agent-sandbox SpaceDeveloper
+
+cf create-space-quota dropship-sandbox-quota \
+  -m 4G -i 2G -r 0 -s 0 --allow-paid-service-plans=false -a -1
+cf set-space-quota agent-sandbox dropship-sandbox-quota
+
+export CF_API_URL="https://api.sys.YOUR-DOMAIN"
+export CF_USERNAME="YOUR_USERNAME"
+export CF_PASSWORD="YOUR_PASSWORD"
+export DROPSHIP_SANDBOX_ORG="ai-workloads"
+export DROPSHIP_SANDBOX_SPACE="agent-sandbox"
 ```

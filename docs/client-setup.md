@@ -8,7 +8,9 @@ through the Dropship MCP server.
 
 ## Prerequisites
 
-- A running Dropship instance with the `/mcp` endpoint accessible
+- A running Dropship instance with the `/mcp` endpoint accessible (see
+  [CF Foundation Setup](cf-setup.md) for deployment with either client credentials
+  or password grant authentication)
 - The Dropship URL (e.g., `https://dropship-mcp.apps.example.com`)
 - For curl testing: `base64` CLI and `tar` (included on macOS and most Linux distros)
 
