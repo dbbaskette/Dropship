@@ -43,19 +43,13 @@ public class StagingService {
     private static final Duration MAX_POLL_INTERVAL = Duration.ofSeconds(10);
     private static final Duration LOG_RETRIEVAL_TIMEOUT = Duration.ofSeconds(15);
 
-    private final ReactorCloudFoundryClient cfClient;
     private final DropshipProperties properties;
     private final SpaceResolver spaceResolver;
-    private final DefaultCloudFoundryOperations cfOperations;
 
-    public StagingService(ReactorCloudFoundryClient cfClient,
-                          DropshipProperties properties,
-                          SpaceResolver spaceResolver,
-                          DefaultCloudFoundryOperations cfOperations) {
-        this.cfClient = cfClient;
+    public StagingService(DropshipProperties properties,
+                          SpaceResolver spaceResolver) {
         this.properties = properties;
         this.spaceResolver = spaceResolver;
-        this.cfOperations = cfOperations;
     }
 
     /**
@@ -64,7 +58,9 @@ public class StagingService {
      * and polls until staging completes or times out.
      */
     public Mono<StagingResult> stage(byte[] sourceBundle, String buildpack,
-                                     Integer memoryMb, Integer diskMb) {
+                                     Integer memoryMb, Integer diskMb,
+                                     ReactorCloudFoundryClient client,
+                                     DefaultCloudFoundryOperations operations) {
         String appName = properties.appNamePrefix()
                 + UUID.randomUUID().toString().substring(0, 8);
         long startTime = System.currentTimeMillis();
@@ -75,13 +71,13 @@ public class StagingService {
                 memoryMb != null ? memoryMb : properties.defaultStagingMemoryMb(),
                 diskMb != null ? diskMb : properties.defaultStagingDiskMb());
 
-        return createApp(appName)
-                .flatMap(appGuid -> createAndUploadPackage(appGuid, sourceBundle)
-                        .flatMap(packageGuid -> createBuild(packageGuid, buildpack))
-                        .flatMap(this::pollBuild)
-                        .flatMap(buildResponse -> retrieveStagingLogs(appName)
+        return createApp(appName, client)
+                .flatMap(appGuid -> createAndUploadPackage(appGuid, sourceBundle, client)
+                        .flatMap(packageGuid -> createBuild(packageGuid, buildpack, client))
+                        .flatMap(buildGuid -> pollBuild(buildGuid, client))
+                        .flatMap(buildResponse -> retrieveStagingLogs(appName, operations)
                                 .map(logs -> toStagingResult(buildResponse, appGuid, appName, buildpack, startTime, logs)))
-                        .onErrorResume(error -> retrieveStagingLogs(appName)
+                        .onErrorResume(error -> retrieveStagingLogs(appName, operations)
                                 .map(logs -> toErrorResult(appGuid, appName, buildpack, startTime, error, logs))))
                 .timeout(STAGING_TIMEOUT)
                 .onErrorResume(error -> {
@@ -94,25 +90,27 @@ public class StagingService {
                 });
     }
 
-    Mono<String> createApp(String appName) {
-        return cfClient.applicationsV3()
-                .create(CreateApplicationRequest.builder()
-                        .name(appName)
-                        .relationships(ApplicationRelationships.builder()
-                                .space(ToOneRelationship.builder()
-                                        .data(Relationship.builder()
-                                                .id(spaceResolver.getSpaceGuid())
+    Mono<String> createApp(String appName, ReactorCloudFoundryClient client) {
+        return spaceResolver.resolveSpace(client)
+                .flatMap(spaceGuid -> client.applicationsV3()
+                        .create(CreateApplicationRequest.builder()
+                                .name(appName)
+                                .relationships(ApplicationRelationships.builder()
+                                        .space(ToOneRelationship.builder()
+                                                .data(Relationship.builder()
+                                                        .id(spaceGuid)
+                                                        .build())
                                                 .build())
                                         .build())
-                                .build())
-                        .build())
+                                .build()))
                 .doOnSuccess(response ->
                         log.info("Created app: name={}, guid={}", appName, response.getId()))
                 .map(response -> response.getId());
     }
 
-    Mono<String> createAndUploadPackage(String appGuid, byte[] sourceBundle) {
-        return cfClient.packages()
+    Mono<String> createAndUploadPackage(String appGuid, byte[] sourceBundle,
+                                         ReactorCloudFoundryClient client) {
+        return client.packages()
                 .create(CreatePackageRequest.builder()
                         .type(PackageType.BITS)
                         .relationships(PackageRelationships.builder()
@@ -128,7 +126,7 @@ public class StagingService {
                 .flatMap(createResponse -> {
                     String packageGuid = createResponse.getId();
                     return writeTempFile(sourceBundle)
-                            .flatMap(tempPath -> cfClient.packages()
+                            .flatMap(tempPath -> client.packages()
                                     .upload(UploadPackageRequest.builder()
                                             .packageId(packageGuid)
                                             .bits(tempPath)
@@ -140,7 +138,8 @@ public class StagingService {
                 });
     }
 
-    Mono<String> createBuild(String packageGuid, String buildpack) {
+    Mono<String> createBuild(String packageGuid, String buildpack,
+                              ReactorCloudFoundryClient client) {
         CreateBuildRequest.Builder builder = CreateBuildRequest.builder()
                 .getPackage(Relationship.builder()
                         .id(packageGuid)
@@ -155,7 +154,7 @@ public class StagingService {
                     .build());
         }
 
-        return cfClient.builds()
+        return client.builds()
                 .create(builder.build())
                 .doOnSuccess(response ->
                         log.info("Created build: guid={}, state={}",
@@ -163,8 +162,8 @@ public class StagingService {
                 .map(response -> response.getId());
     }
 
-    Mono<GetBuildResponse> pollBuild(String buildGuid) {
-        return Mono.defer(() -> cfClient.builds()
+    Mono<GetBuildResponse> pollBuild(String buildGuid, ReactorCloudFoundryClient client) {
+        return Mono.defer(() -> client.builds()
                 .get(GetBuildRequest.builder()
                         .buildId(buildGuid)
                         .build()))
@@ -184,8 +183,9 @@ public class StagingService {
                         .filter(StagingInProgressException.class::isInstance));
     }
 
-    private Mono<String> retrieveStagingLogs(String appName) {
-        return cfOperations.applications()
+    private Mono<String> retrieveStagingLogs(String appName,
+                                              DefaultCloudFoundryOperations operations) {
+        return operations.applications()
                 .logs(ApplicationLogsRequest.builder()
                         .name(appName)
                         .recent(true)

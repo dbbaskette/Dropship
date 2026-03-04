@@ -1,7 +1,9 @@
 package com.baskette.dropship.tool;
 
+import com.baskette.dropship.config.CfClientFactory;
 import com.baskette.dropship.model.TaskResult;
 import com.baskette.dropship.service.TaskService;
+import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.slf4j.Logger;
@@ -16,9 +18,11 @@ public class RunTaskTool {
     private static final Logger log = LoggerFactory.getLogger(RunTaskTool.class);
 
     private final TaskService taskService;
+    private final CfClientFactory cfClientFactory;
 
-    public RunTaskTool(TaskService taskService) {
+    public RunTaskTool(TaskService taskService, CfClientFactory cfClientFactory) {
         this.taskService = taskService;
+        this.cfClientFactory = cfClientFactory;
     }
 
     @McpTool(
@@ -42,6 +46,8 @@ public class RunTaskTool {
             @McpToolParam(description = "Environment variables as key-value pairs")
             Map<String, String> environment) {
 
+        ReactorCloudFoundryClient client = cfClientFactory.getClientForCurrentSession();
+
         if (appGuid == null || appGuid.isBlank()) {
             throw new IllegalArgumentException("appGuid must not be empty");
         }
@@ -56,6 +62,6 @@ public class RunTaskTool {
                 appGuid, dropletGuid, command, memoryMb, timeoutSeconds);
 
         return taskService.runTask(appGuid, dropletGuid, command,
-                memoryMb, timeoutSeconds, environment).block();
+                memoryMb, timeoutSeconds, environment, client).block();
     }
 }

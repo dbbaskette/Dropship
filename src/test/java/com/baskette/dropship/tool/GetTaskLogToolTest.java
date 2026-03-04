@@ -1,8 +1,10 @@
 package com.baskette.dropship.tool;
 
+import com.baskette.dropship.config.CfClientFactory;
 import com.baskette.dropship.model.TaskLogs;
 import com.baskette.dropship.model.TaskLogs.LogEntry;
 import com.baskette.dropship.service.LogService;
+import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,15 +29,26 @@ class GetTaskLogToolTest {
     @Mock
     private LogService logService;
 
+    @Mock
+    private CfClientFactory cfClientFactory;
+
+    @Mock
+    private DefaultCloudFoundryOperations cfOperations;
+
     private GetTaskLogsTool getTaskLogsTool;
 
     @BeforeEach
     void setUp() {
-        getTaskLogsTool = new GetTaskLogsTool(logService);
+        getTaskLogsTool = new GetTaskLogsTool(logService, cfClientFactory);
+    }
+
+    private void stubClientFactory() {
+        when(cfClientFactory.getOperationsForCurrentSession()).thenReturn(cfOperations);
     }
 
     @Test
     void getTaskLogsDelegatesToLogService() {
+        stubClientFactory();
         TaskLogs expected = new TaskLogs(
                 "task-guid-1",
                 List.of(
@@ -47,7 +60,7 @@ class GetTaskLogToolTest {
         );
 
         when(logService.getTaskLogs(
-                eq("task-guid-1"), eq("my-app"), eq(100), eq("stdout")))
+                eq("task-guid-1"), eq("my-app"), eq(100), eq("stdout"), eq(cfOperations)))
                 .thenReturn(Mono.just(expected));
 
         TaskLogs result = getTaskLogsTool.getTaskLogs(
@@ -59,11 +72,12 @@ class GetTaskLogToolTest {
         assertThat(result.truncated()).isFalse();
 
         verify(logService).getTaskLogs(
-                eq("task-guid-1"), eq("my-app"), eq(100), eq("stdout"));
+                eq("task-guid-1"), eq("my-app"), eq(100), eq("stdout"), eq(cfOperations));
     }
 
     @Test
     void rejectsNullTaskGuid() {
+        stubClientFactory();
         assertThatThrownBy(() -> getTaskLogsTool.getTaskLogs(
                 null, "my-app", null, null))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -74,6 +88,7 @@ class GetTaskLogToolTest {
 
     @Test
     void rejectsEmptyTaskGuid() {
+        stubClientFactory();
         assertThatThrownBy(() -> getTaskLogsTool.getTaskLogs(
                 "", "my-app", null, null))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -84,6 +99,7 @@ class GetTaskLogToolTest {
 
     @Test
     void rejectsNullAppName() {
+        stubClientFactory();
         assertThatThrownBy(() -> getTaskLogsTool.getTaskLogs(
                 "task-guid-1", null, null, null))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -94,6 +110,7 @@ class GetTaskLogToolTest {
 
     @Test
     void rejectsEmptyAppName() {
+        stubClientFactory();
         assertThatThrownBy(() -> getTaskLogsTool.getTaskLogs(
                 "task-guid-1", "", null, null))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -104,6 +121,7 @@ class GetTaskLogToolTest {
 
     @Test
     void passesNullOptionalParams() {
+        stubClientFactory();
         TaskLogs expected = new TaskLogs(
                 "task-guid-2",
                 List.of(new LogEntry(Instant.ofEpochMilli(5000), "stdout", "output line")),
@@ -112,7 +130,7 @@ class GetTaskLogToolTest {
         );
 
         when(logService.getTaskLogs(
-                eq("task-guid-2"), eq("my-app"), isNull(), isNull()))
+                eq("task-guid-2"), eq("my-app"), isNull(), isNull(), eq(cfOperations)))
                 .thenReturn(Mono.just(expected));
 
         TaskLogs result = getTaskLogsTool.getTaskLogs(
@@ -122,6 +140,20 @@ class GetTaskLogToolTest {
         assertThat(result.entries()).hasSize(1);
 
         verify(logService).getTaskLogs(
-                eq("task-guid-2"), eq("my-app"), isNull(), isNull());
+                eq("task-guid-2"), eq("my-app"), isNull(), isNull(), eq(cfOperations));
+    }
+
+    @Test
+    void getTaskLogsThrowsWhenNoSessionCredentials() {
+        when(cfClientFactory.getOperationsForCurrentSession())
+                .thenThrow(new IllegalStateException(
+                        "No CF credentials found for this session. Call connect_cf first."));
+
+        assertThatThrownBy(() -> getTaskLogsTool.getTaskLogs(
+                "task-guid-1", "my-app", null, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("No CF credentials found for this session");
+
+        verifyNoInteractions(logService);
     }
 }
