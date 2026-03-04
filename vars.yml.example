@@ -11,11 +11,20 @@
 # CF API endpoint for the target foundation
 cf-api-url: https://api.sys.YOUR-DOMAIN
 
-# UAA client credentials — optional (admin/default fallback only).
-# Per-user credentials are supplied via connect_cf at runtime.
-# (created via uaac — see docs/cf-setup.md)
+# ── Authentication ──────────────────────────────────────────────────
+# Choose ONE of the two credential options below.
+# If both are provided, client credentials takes precedence.
+# See docs/cf-setup.md for setup instructions.
+
+# Option A: Client credentials (recommended for production / service accounts)
+# Requires a UAA client created via uaac — see docs/cf-setup.md Step 1 Option A.
 cf-client-id: dropship-client
 cf-client-secret: REPLACE_WITH_CLIENT_SECRET
+
+# Option B: Password grant (convenient for dev/testing with a personal account)
+# Uncomment these and comment out Option A above to use password grant.
+# cf-username: REPLACE_WITH_CF_USERNAME
+# cf-password: REPLACE_WITH_CF_PASSWORD
 
 # Sandbox org and space where Dropship runs agent workloads
 sandbox-org: ai-workloads
