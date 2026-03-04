@@ -7,6 +7,7 @@ import com.baskette.dropship.service.LogService;
 import com.baskette.dropship.service.StagingService;
 import com.baskette.dropship.service.TaskService;
 import org.cloudfoundry.client.v3.applications.DeleteApplicationRequest;
+import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
 import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
@@ -61,6 +62,9 @@ class DropshipIntegrationTest {
     @Autowired
     private ReactorCloudFoundryClient cfClient;
 
+    @Autowired
+    private DefaultCloudFoundryOperations cfOperations;
+
     private StagingResult stagingResult;
     private TaskResult taskResult;
     private String appName;
@@ -88,7 +92,8 @@ class DropshipIntegrationTest {
     void stageCode_success() throws Exception {
         byte[] sourceBundle = createSourceBundle();
 
-        stagingResult = stagingService.stage(sourceBundle, "java_buildpack", null, null)
+        stagingResult = stagingService.stage(sourceBundle, "java_buildpack", null, null,
+                        cfClient, cfOperations)
                 .block(STAGING_TIMEOUT);
 
         assertThat(stagingResult).isNotNull();
@@ -113,7 +118,7 @@ class DropshipIntegrationTest {
                         stagingResult.appGuid(),
                         stagingResult.dropletGuid(),
                         "java -jar hello.jar",
-                        null, null, null)
+                        null, null, null, cfClient)
                 .block(TASK_TIMEOUT);
 
         assertThat(taskResult).isNotNull();
@@ -132,7 +137,7 @@ class DropshipIntegrationTest {
         assumeThat(appName).isNotNull();
 
         TaskLogs taskLogs = logService.getTaskLogs(
-                        taskResult.taskGuid(), appName, null, null)
+                        taskResult.taskGuid(), appName, null, null, cfOperations)
                 .block(Duration.ofSeconds(30));
 
         assertThat(taskLogs).isNotNull();
@@ -153,7 +158,8 @@ class DropshipIntegrationTest {
     void stageCode_failureWithInvalidSource() {
         byte[] invalidSource = createInvalidSourceBundle();
 
-        StagingResult result = stagingService.stage(invalidSource, "java_buildpack", null, null)
+        StagingResult result = stagingService.stage(invalidSource, "java_buildpack", null, null,
+                        cfClient, cfOperations)
                 .block(STAGING_TIMEOUT);
 
         assertThat(result).isNotNull();
@@ -176,7 +182,7 @@ class DropshipIntegrationTest {
                         stagingResult.appGuid(),
                         stagingResult.dropletGuid(),
                         "nonexistent-command-that-does-not-exist",
-                        null, null, null)
+                        null, null, null, cfClient)
                 .block(TASK_TIMEOUT);
 
         assertThat(result).isNotNull();
