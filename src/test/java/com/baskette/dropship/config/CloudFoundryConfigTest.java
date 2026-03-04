@@ -74,6 +74,9 @@ class CloudFoundryConfigTest {
     class PasswordGrantMode {
 
         @Autowired
+        private DefaultConnectionContext connectionContext;
+
+        @Autowired
         private TokenProvider tokenProvider;
 
         @Autowired
@@ -81,6 +84,11 @@ class CloudFoundryConfigTest {
 
         @Autowired
         private DefaultCloudFoundryOperations cloudFoundryOperations;
+
+        @Test
+        void connectionContextBeanIsCreated() {
+            assertThat(connectionContext).isNotNull();
+        }
 
         @Test
         void passwordGrantTokenProviderIsActive() {
@@ -158,10 +166,18 @@ class CloudFoundryConfigTest {
     class BothCredentialsMode {
 
         @Autowired
+        private DefaultConnectionContext connectionContext;
+
+        @Autowired
         private TokenProvider tokenProvider;
 
         @Autowired
         private ApplicationContext applicationContext;
+
+        @Test
+        void connectionContextBeanIsCreated() {
+            assertThat(connectionContext).isNotNull();
+        }
 
         @Test
         void clientCredentialsTakesPrecedence() {
