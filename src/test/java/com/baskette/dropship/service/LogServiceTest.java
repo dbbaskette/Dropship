@@ -35,7 +35,7 @@ class LogServiceTest {
 
     @BeforeEach
     void setUp() {
-        logService = new LogService(cfOperations);
+        logService = new LogService();
     }
 
     private ApplicationLog buildLog(String message, ApplicationLogType logType, long timestampNanos) {
@@ -61,10 +61,9 @@ class LogServiceTest {
 
     @Test
     void happyPathReturnsOrderedLogEntries() {
-        // Timestamps in nanoseconds: 3000ms, 1000ms, 2000ms (unordered)
-        long ts1 = 1_000_000_000L; // 1 second in nanos
-        long ts2 = 2_000_000_000L; // 2 seconds in nanos
-        long ts3 = 3_000_000_000L; // 3 seconds in nanos
+        long ts1 = 1_000_000_000L;
+        long ts2 = 2_000_000_000L;
+        long ts3 = 3_000_000_000L;
 
         stubLogs(
                 buildLog("third", ApplicationLogType.OUT, ts3),
@@ -72,7 +71,7 @@ class LogServiceTest {
                 buildLog("second", ApplicationLogType.OUT, ts2)
         );
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, null))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, null, cfOperations))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.taskGuid()).isEqualTo("task-guid-1");
                     assertThat(taskLogs.truncated()).isFalse();
@@ -81,7 +80,6 @@ class LogServiceTest {
                     List<LogEntry> entries = taskLogs.entries();
                     assertThat(entries).hasSize(3);
 
-                    // Verify sorted by timestamp ascending
                     assertThat(entries.get(0).message()).isEqualTo("first");
                     assertThat(entries.get(0).source()).isEqualTo("stderr");
                     assertThat(entries.get(0).timestamp()).isEqualTo(Instant.ofEpochMilli(1000));
@@ -101,7 +99,7 @@ class LogServiceTest {
     void emptyLogsReturnsEmptyList() {
         stubEmptyLogs();
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, null))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, null, cfOperations))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.taskGuid()).isEqualTo("task-guid-1");
                     assertThat(taskLogs.entries()).isEmpty();
@@ -113,20 +111,18 @@ class LogServiceTest {
 
     @Test
     void truncationWhenExceedsMaxLines() {
-        // Build 10 log entries
         ApplicationLog[] logs = new ApplicationLog[10];
         for (int i = 0; i < 10; i++) {
             logs[i] = buildLog("line-" + i, ApplicationLogType.OUT, (i + 1) * 1_000_000_000L);
         }
         stubLogs(logs);
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", 5, null))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", 5, null, cfOperations))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.entries()).hasSize(5);
                     assertThat(taskLogs.truncated()).isTrue();
                     assertThat(taskLogs.totalLines()).isEqualTo(10);
 
-                    // Verify first 5 entries (sorted by timestamp)
                     assertThat(taskLogs.entries().get(0).message()).isEqualTo("line-0");
                     assertThat(taskLogs.entries().get(4).message()).isEqualTo("line-4");
                 })
@@ -141,7 +137,7 @@ class LogServiceTest {
                 buildLog("out-2", ApplicationLogType.OUT, 3_000_000_000L)
         );
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, "stdout"))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, "stdout", cfOperations))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.entries()).hasSize(2);
                     assertThat(taskLogs.entries()).allSatisfy(entry ->
@@ -161,7 +157,7 @@ class LogServiceTest {
                 buildLog("err-2", ApplicationLogType.ERR, 4_000_000_000L)
         );
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, "stderr"))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, "stderr", cfOperations))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.entries()).hasSize(2);
                     assertThat(taskLogs.entries()).allSatisfy(entry ->
@@ -179,8 +175,7 @@ class LogServiceTest {
                 buildLog("err-msg", ApplicationLogType.ERR, 2_000_000_000L)
         );
 
-        // source=null should default to "all" and return both OUT and ERR entries
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, null))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, null, cfOperations))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.entries()).hasSize(2);
                     assertThat(taskLogs.entries().get(0).source()).isEqualTo("stdout");

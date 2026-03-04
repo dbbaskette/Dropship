@@ -1,7 +1,10 @@
 package com.baskette.dropship.tool;
 
+import com.baskette.dropship.config.CfClientFactory;
 import com.baskette.dropship.model.StagingResult;
 import com.baskette.dropship.service.StagingService;
+import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
+import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.slf4j.Logger;
@@ -16,9 +19,11 @@ public class StageCodeTool {
     private static final Logger log = LoggerFactory.getLogger(StageCodeTool.class);
 
     private final StagingService stagingService;
+    private final CfClientFactory cfClientFactory;
 
-    public StageCodeTool(StagingService stagingService) {
+    public StageCodeTool(StagingService stagingService, CfClientFactory cfClientFactory) {
         this.stagingService = stagingService;
+        this.cfClientFactory = cfClientFactory;
     }
 
     @McpTool(
@@ -36,6 +41,9 @@ public class StageCodeTool {
             Integer memoryMb,
             @McpToolParam(description = "Disk limit in MB for staging (default: 2048)")
             Integer diskMb) {
+
+        ReactorCloudFoundryClient client = cfClientFactory.getClientForCurrentSession();
+        DefaultCloudFoundryOperations operations = cfClientFactory.getOperationsForCurrentSession();
 
         if (sourceBundle == null || sourceBundle.isBlank()) {
             throw new IllegalArgumentException("sourceBundle must not be empty");
@@ -58,6 +66,6 @@ public class StageCodeTool {
                 memoryMb,
                 diskMb);
 
-        return stagingService.stage(decoded, buildpack, memoryMb, diskMb).block();
+        return stagingService.stage(decoded, buildpack, memoryMb, diskMb, client, operations).block();
     }
 }

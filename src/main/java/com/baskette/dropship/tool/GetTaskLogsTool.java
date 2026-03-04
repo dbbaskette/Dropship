@@ -1,7 +1,9 @@
 package com.baskette.dropship.tool;
 
+import com.baskette.dropship.config.CfClientFactory;
 import com.baskette.dropship.model.TaskLogs;
 import com.baskette.dropship.service.LogService;
+import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.slf4j.Logger;
@@ -14,9 +16,11 @@ public class GetTaskLogsTool {
     private static final Logger log = LoggerFactory.getLogger(GetTaskLogsTool.class);
 
     private final LogService logService;
+    private final CfClientFactory cfClientFactory;
 
-    public GetTaskLogsTool(LogService logService) {
+    public GetTaskLogsTool(LogService logService, CfClientFactory cfClientFactory) {
         this.logService = logService;
+        this.cfClientFactory = cfClientFactory;
     }
 
     @McpTool(
@@ -35,6 +39,8 @@ public class GetTaskLogsTool {
             @McpToolParam(description = "Filter by source: 'stdout', 'stderr', or 'all' (default: 'all')")
             String source) {
 
+        DefaultCloudFoundryOperations operations = cfClientFactory.getOperationsForCurrentSession();
+
         if (taskGuid == null || taskGuid.isBlank()) {
             throw new IllegalArgumentException("taskGuid must not be empty");
         }
@@ -45,6 +51,6 @@ public class GetTaskLogsTool {
         log.info("get_task_logs invoked: taskGuid={}, appName={}, maxLines={}, source={}",
                 taskGuid, appName, maxLines, source != null ? source : "all");
 
-        return logService.getTaskLogs(taskGuid, appName, maxLines, source).block();
+        return logService.getTaskLogs(taskGuid, appName, maxLines, source, operations).block();
     }
 }

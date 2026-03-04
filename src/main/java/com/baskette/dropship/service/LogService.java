@@ -20,21 +20,16 @@ public class LogService {
     private static final Logger log = LoggerFactory.getLogger(LogService.class);
     private static final int DEFAULT_MAX_LINES = 500;
 
-    private final DefaultCloudFoundryOperations cfOperations;
-
-    public LogService(DefaultCloudFoundryOperations cfOperations) {
-        this.cfOperations = cfOperations;
-    }
-
     public Mono<TaskLogs> getTaskLogs(String taskGuid, String appName,
-                                       Integer maxLines, String source) {
+                                       Integer maxLines, String source,
+                                       DefaultCloudFoundryOperations operations) {
         int limit = maxLines != null ? maxLines : DEFAULT_MAX_LINES;
         String sourceFilter = source != null ? source : "all";
 
         log.info("Retrieving logs: taskGuid={}, appName={}, maxLines={}, source={}",
                 taskGuid, appName, limit, sourceFilter);
 
-        return cfOperations.applications()
+        return operations.applications()
                 .logs(ApplicationLogsRequest.builder()
                         .name(appName)
                         .recent(true)
