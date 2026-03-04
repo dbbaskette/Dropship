@@ -1,6 +1,5 @@
 package com.baskette.dropship.config;
 
-import com.baskette.dropship.service.SpaceResolver;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
@@ -8,19 +7,25 @@ import org.springframework.stereotype.Component;
 @Component
 public class SpaceResolverHealthIndicator implements HealthIndicator {
 
-    private final SpaceResolver spaceResolver;
+    private final DropshipProperties properties;
 
-    public SpaceResolverHealthIndicator(SpaceResolver spaceResolver) {
-        this.spaceResolver = spaceResolver;
+    public SpaceResolverHealthIndicator(DropshipProperties properties) {
+        this.properties = properties;
     }
 
     @Override
     public Health health() {
-        try {
-            String spaceGuid = spaceResolver.getSpaceGuid();
-            return Health.up().withDetail("spaceGuid", spaceGuid).build();
-        } catch (IllegalStateException e) {
-            return Health.down().withDetail("reason", "Space GUID not resolved").build();
+        String org = properties.sandboxOrg();
+        String space = properties.sandboxSpace();
+
+        if (org != null && !org.isBlank() && space != null && !space.isBlank()) {
+            return Health.up()
+                    .withDetail("sandboxOrg", org)
+                    .withDetail("sandboxSpace", space)
+                    .build();
         }
+        return Health.down()
+                .withDetail("reason", "sandboxOrg or sandboxSpace not configured")
+                .build();
     }
 }
