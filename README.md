@@ -98,6 +98,7 @@ flowchart TB
 | Component | Artifact | Version |
 |---|---|---|
 | Spring Boot | `spring-boot-starter-webflux` | 3.4.3 |
+| Spring Security | `spring-boot-starter-security` | 3.4.3 |
 | Spring AI | `spring-ai-bom` | 1.1.2 |
 | MCP Server | `spring-ai-starter-mcp-server-webflux` | 1.1.2 (via BOM) |
 | MCP Annotations | `org.springaicommunity:mcp-annotations` | 0.8.0 |
@@ -250,16 +251,22 @@ Use `--verbose` to print raw curl commands for debugging.
 ```
 src/main/java/com/baskette/dropship/
 ├── DropshipApplication.java
+├── auth/
+│   └── StaticCredentialsSecurityConfiguration.java  # WebFlux SecurityFilterChain (permit-all baseline)
 ├── config/
+│   ├── CfClientFactory.java              # Per-session CF client creation
 │   ├── CloudFoundryConfig.java           # CF client beans, UAA auth
 │   ├── CloudFoundryHealthCheck.java      # Startup connectivity verification
 │   ├── DropshipProperties.java           # @ConfigurationProperties
+│   ├── SessionCredentialRegistry.java    # Multi-user credential store
+│   ├── SessionNotFoundException.java     # Missing session error
 │   └── SpaceResolverHealthIndicator.java # /actuator/health contributor
 ├── tool/
 │   ├── StageCodeTool.java                # @McpTool stage_code
 │   ├── RunTaskTool.java                  # @McpTool run_task
 │   └── GetTaskLogsTool.java              # @McpTool get_task_logs
 ├── model/
+│   ├── CfCredentials.java                # CF API + UAA credential record
 │   ├── StagingResult.java                # Staging outcome record
 │   ├── TaskResult.java                   # Task execution outcome
 │   └── TaskLogs.java                     # Structured log entries
@@ -288,7 +295,9 @@ src/main/java/com/baskette/dropship/
 
 | Phase | Focus | Status |
 |---|---|---|
-| **Phase 1: Foundation (MVP)** | Three core tools, CF integration, deployment manifest | In progress |
+| **Phase 1: Foundation (MVP)** | Three core tools, CF integration, deployment manifest | Complete |
+| **M6: Multi-User Isolation** | Per-session CF clients, credential registry, singleton removal | Complete |
+| **M7: Static Credentials Auth** | Spring Security baseline, security filter chain | Complete |
 | **Phase 2: Hardening** | Rate limiting, task queuing, droplet caching, metrics | Planned |
 | **Phase 3: Enterprise** | Multi-space RBAC, service binding passthrough, cost attribution | Planned |
 | **Phase 4: Worldmind** | Centurion toolkit adapter, parallel test orchestration | Planned |
