@@ -1,114 +1,78 @@
 package com.baskette.dropship.tool;
 
-import com.baskette.dropship.config.CfClientFactory;
-import com.baskette.dropship.config.DropshipProperties;
 import com.baskette.dropship.model.ConnectionTestResult;
-import com.baskette.dropship.service.SpaceResolver;
-import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
+import io.modelcontextprotocol.common.McpTransportContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import reactor.core.publisher.Mono;
+import org.springaicommunity.mcp.context.McpSyncRequestContext;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TestConnectionToolTest {
 
     @Mock
-    private CfClientFactory cfClientFactory;
-
-    @Mock
-    private SpaceResolver spaceResolver;
-
-    @Mock
-    private ReactorCloudFoundryClient cfClient;
+    private McpSyncRequestContext requestContext;
 
     private TestConnectionTool testConnectionTool;
 
-    private static final DropshipProperties PROPS = new DropshipProperties(
-            "test-org", "test-space", "https://api.test.example.com",
-            0, 0, 0, 0, 0, 0, null
-    );
-
     @BeforeEach
     void setUp() {
-        testConnectionTool = new TestConnectionTool(cfClientFactory, spaceResolver, PROPS);
+        testConnectionTool = new TestConnectionTool(true);
+    }
+
+    private void stubHeaders(Map<String, String> headers) {
+        McpTransportContext transportContext = McpTransportContext.create(Map.copyOf(headers));
+        when(requestContext.transportContext()).thenReturn(transportContext);
     }
 
     @Test
-    void successReturnsAllFields() {
-        when(cfClientFactory.getClientForCurrentSession()).thenReturn(cfClient);
-        when(spaceResolver.resolveSpace(cfClient)).thenReturn(Mono.just("space-guid-123"));
+    void missingHeadersReturnsError() {
+        stubHeaders(Map.of());
 
-        ConnectionTestResult result = testConnectionTool.testConnection();
-
-        assertThat(result.success()).isTrue();
-        assertThat(result.apiHost()).isEqualTo("api.test.example.com");
-        assertThat(result.org()).isEqualTo("test-org");
-        assertThat(result.space()).isEqualTo("test-space");
-        assertThat(result.spaceGuid()).isEqualTo("space-guid-123");
-        assertThat(result.errorMessage()).isNull();
-    }
-
-    @Test
-    void noSessionReturnsError() {
-        when(cfClientFactory.getClientForCurrentSession())
-                .thenThrow(new IllegalStateException(
-                        "No CF credentials found for this session. Call connect_cf first."));
-
-        ConnectionTestResult result = testConnectionTool.testConnection();
+        ConnectionTestResult result = testConnectionTool.testConnection(requestContext);
 
         assertThat(result.success()).isFalse();
-        assertThat(result.apiHost()).isEqualTo("api.test.example.com");
+        assertThat(result.apiHost()).isNull();
+        assertThat(result.username()).isNull();
         assertThat(result.spaceGuid()).isNull();
-        assertThat(result.errorMessage()).contains("No CF credentials found");
+        assertThat(result.errorMessage()).contains("Missing required header");
     }
 
     @Test
-    void orgNotFoundReturnsError() {
-        when(cfClientFactory.getClientForCurrentSession()).thenReturn(cfClient);
-        when(spaceResolver.resolveSpace(cfClient))
-                .thenReturn(Mono.error(new IllegalStateException("Organization not found: bad-org")));
+    void missingPasswordReturnsError() {
+        stubHeaders(Map.of(
+                "X-CF-ApiHost", "api.test.example.com",
+                "X-CF-Username", "testuser",
+                "X-CF-Org", "test-org",
+                "X-CF-Space", "test-space"
+        ));
 
-        ConnectionTestResult result = testConnectionTool.testConnection();
+        ConnectionTestResult result = testConnectionTool.testConnection(requestContext);
 
         assertThat(result.success()).isFalse();
-        assertThat(result.org()).isEqualTo("test-org");
-        assertThat(result.spaceGuid()).isNull();
-        assertThat(result.errorMessage()).isEqualTo("Organization not found: bad-org");
+        assertThat(result.errorMessage()).contains("Missing required header: X-CF-Password");
     }
 
     @Test
-    void spaceNotFoundReturnsError() {
-        when(cfClientFactory.getClientForCurrentSession()).thenReturn(cfClient);
-        when(spaceResolver.resolveSpace(cfClient))
-                .thenReturn(Mono.error(new IllegalStateException(
-                        "Space not found: bad-space in organization: test-org")));
+    void blankHeaderReturnsError() {
+        stubHeaders(Map.of(
+                "X-CF-ApiHost", "api.test.example.com",
+                "X-CF-Username", "",
+                "X-CF-Password", "testpass",
+                "X-CF-Org", "test-org",
+                "X-CF-Space", "test-space"
+        ));
 
-        ConnectionTestResult result = testConnectionTool.testConnection();
-
-        assertThat(result.success()).isFalse();
-        assertThat(result.space()).isEqualTo("test-space");
-        assertThat(result.spaceGuid()).isNull();
-        assertThat(result.errorMessage()).isEqualTo("Space not found: bad-space in organization: test-org");
-    }
-
-    @Test
-    void authFailureReturnsError() {
-        when(cfClientFactory.getClientForCurrentSession()).thenReturn(cfClient);
-        when(spaceResolver.resolveSpace(cfClient))
-                .thenReturn(Mono.error(new RuntimeException("401 Unauthorized")));
-
-        ConnectionTestResult result = testConnectionTool.testConnection();
+        ConnectionTestResult result = testConnectionTool.testConnection(requestContext);
 
         assertThat(result.success()).isFalse();
-        assertThat(result.apiHost()).isEqualTo("api.test.example.com");
-        assertThat(result.spaceGuid()).isNull();
-        assertThat(result.errorMessage()).isEqualTo("401 Unauthorized");
+        assertThat(result.errorMessage()).contains("Missing required header: X-CF-Username");
     }
 }
