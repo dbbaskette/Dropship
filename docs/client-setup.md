@@ -1,18 +1,31 @@
 # MCP Client Setup for Dropship
 
-How to connect MCP clients to a deployed Dropship instance. After completing these
-steps, your AI agent or manual workflow can stage code, run tasks, and retrieve logs
-through the Dropship MCP server.
+How to connect MCP clients to a deployed Dropship instance. Once connected, your
+AI agent receives Dropship's server instructions automatically — no additional
+configuration is needed to teach it how to use the tools.
+
+---
+
+## How It Works
+
+When an MCP client connects to Dropship, the server sends **instructions** as part
+of the MCP initialization handshake. These instructions teach the LLM:
+
+- The two workflow patterns (ephemeral tasks vs. long-running web apps)
+- Which tools to call in what order
+- How to thread parameters between tools (appGuid, dropletGuid, etc.)
+- Buildpack selection, resource defaults, and error recovery
+
+This is built into the MCP protocol — no client-side rules files, skills, or
+custom prompts are needed. Just point your client at the Dropship URL and go.
 
 ---
 
 ## Prerequisites
 
 - A running Dropship instance with the `/mcp` endpoint accessible (see
-  [CF Foundation Setup](cf-setup.md) for deployment with either client credentials
-  or password grant authentication)
+  [deployment.md](deployment.md) and [cf-setup.md](cf-setup.md))
 - The Dropship URL (e.g., `https://dropship-mcp.apps.example.com`)
-- For curl testing: `base64` CLI and `tar` (included on macOS and most Linux distros)
 
 Confirm the server is reachable before configuring clients:
 
@@ -23,13 +36,14 @@ curl -s https://dropship-mcp.apps.example.com/mcp \
   | jq .
 ```
 
-You should see a JSON-RPC response containing the server's capabilities.
+You should see a JSON-RPC response containing the server's capabilities and
+`instructions` field.
 
 ---
 
 ## 1. Claude Code
 
-Claude Code supports two configuration locations:
+Claude Code supports two configuration locations.
 
 ### Organization-Wide (Managed)
 
@@ -43,8 +57,6 @@ For org-wide deployment, add Dropship to `~/.claude/managed-mcp.json`:
   }
 }
 ```
-
-This makes the Dropship tools available in every Claude Code session for the user.
 
 ### Project-Local
 
@@ -61,15 +73,8 @@ For per-project configuration, add to `.claude/mcp.json` in the project root:
 
 ### Verify
 
-After saving the configuration, restart Claude Code and check that the three Dropship
-tools appear:
-
-```
-/mcp
-```
-
-You should see `stage_code`, `run_task`, and `get_task_logs` listed under the
-`dropship` server.
+After saving the configuration, restart Claude Code and run `/mcp` to confirm the
+Dropship tools are listed.
 
 ---
 
@@ -89,7 +94,7 @@ Add Dropship to `.cursor/mcp.json` in the project root:
 
 ### Verify
 
-Open Cursor Settings → MCP and confirm the `dropship` server shows a green
+Open Cursor Settings -> MCP and confirm the `dropship` server shows a green
 connected status.
 
 ---
@@ -110,41 +115,37 @@ Add Dropship to `.windsurf/mcp.json` in the project root:
 
 ### Verify
 
-Open Windsurf and check the MCP panel to confirm the `dropship` server is connected
-and the three tools are listed.
+Open Windsurf and check the MCP panel to confirm the `dropship` server is connected.
 
 ---
 
-## 4. Manual Testing with curl
+## 4. Any MCP Client
 
-Use curl to invoke the Dropship MCP tools directly via JSON-RPC over HTTP. This is
-useful for debugging, scripting, and verifying the server outside an MCP client.
+Any client that implements the MCP protocol can connect to Dropship. Point the
+client's MCP server configuration at `https://dropship-mcp.apps.example.com/mcp`
+using Streamable HTTP transport. The client will receive:
 
-All requests go to the `/mcp` endpoint and use the MCP Streamable HTTP transport.
+- **10 tools** via `tools/list`: `test_cf_connection`, `stage_code`,
+  `stage_git_repo`, `get_build_status`, `run_task`, `get_task_status`,
+  `get_task_logs`, `start_app`, `get_app_status`, `stop_app`
+- **Server instructions** via the `InitializeResult` that guide the LLM on tool
+  orchestration patterns
+
+---
+
+## 5. Manual Testing with curl
+
+Use curl to invoke the Dropship MCP tools directly via JSON-RPC over HTTP.
 
 ### Automated E2E Test Script
-
-For a one-command verification of the complete `stage_code` → `run_task` →
-`get_task_logs` workflow, use the automated test script:
 
 ```bash
 DROPSHIP_URL=https://dropship-mcp.apps.example.com/mcp ./scripts/e2e-curl-test.sh
 ```
 
-The script requires `curl`, `jq`, `base64`, `tar`, and the `cf` CLI (logged in to the
-target foundation). It uses the `hello-world` test fixture, encodes it as a source bundle,
-stages it, runs a task, and verifies the expected output appears in the logs.
-
-Use `--verbose` to print the raw curl commands as they execute — useful for capturing
-commands for your own scripts or debugging:
-
-```bash
-DROPSHIP_URL=https://dropship-mcp.apps.example.com/mcp ./scripts/e2e-curl-test.sh --verbose
-```
+Use `--verbose` to print raw curl commands for debugging.
 
 ### Initialize a Session
-
-Before calling tools, initialize an MCP session:
 
 ```bash
 curl -s https://dropship-mcp.apps.example.com/mcp \
@@ -183,44 +184,58 @@ curl -s https://dropship-mcp.apps.example.com/mcp \
   }'
 ```
 
-### stage_code
+### stage_git_repo
 
-Create a source bundle and base64-encode it:
+Stage a public git repo (preferred over `stage_code` when source is in git):
 
 ```bash
-# Create a simple Java app
-mkdir -p /tmp/hello-app/src/main/java
-cat > /tmp/hello-app/src/main/java/Hello.java << 'JAVA'
-public class Hello {
-    public static void main(String[] args) {
-        System.out.println("Hello from Dropship!");
-    }
-}
-JAVA
-
-# Create a tarball and base64-encode it
-tar czf /tmp/hello-app.tar.gz -C /tmp/hello-app .
-SOURCE_BUNDLE=$(base64 < /tmp/hello-app.tar.gz)
-
-# Stage the code
 curl -s https://dropship-mcp.apps.example.com/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $MCP_SESSION" \
-  -d "{
-    \"jsonrpc\": \"2.0\",
-    \"id\": 2,
-    \"method\": \"tools/call\",
-    \"params\": {
-      \"name\": \"stage_code\",
-      \"arguments\": {
-        \"sourceBundle\": \"$SOURCE_BUNDLE\",
-        \"buildpack\": \"java_buildpack\"
+  -H "cf-apihost: api.cf.example.com" \
+  -H "cf-username: myuser" \
+  -H "cf-password: mypass" \
+  -H "cf-org: my-org" \
+  -H "cf-space: my-space" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "stage_git_repo",
+      "arguments": {
+        "repoUrl": "https://github.com/user/my-app.git",
+        "buildpack": "java_buildpack"
       }
     }
-  }" | jq .
+  }' | jq .
 ```
 
-The response contains `dropletGuid` and `appGuid` needed for the next step.
+The response contains a `buildId`. Poll with `get_build_status` until complete:
+
+```bash
+curl -s https://dropship-mcp.apps.example.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Mcp-Session-Id: $MCP_SESSION" \
+  -H "cf-apihost: api.cf.example.com" \
+  -H "cf-username: myuser" \
+  -H "cf-password: mypass" \
+  -H "cf-org: my-org" \
+  -H "cf-space: my-space" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "get_build_status",
+      "arguments": {
+        "buildId": "<buildId-from-stage_git_repo>"
+      }
+    }
+  }' | jq .
+```
+
+The completed response contains `appGuid`, `appName`, and `dropletGuid`.
 
 ### run_task
 
@@ -230,22 +245,25 @@ Execute a command using the staged droplet:
 curl -s https://dropship-mcp.apps.example.com/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $MCP_SESSION" \
+  -H "cf-apihost: api.cf.example.com" \
+  -H "cf-username: myuser" \
+  -H "cf-password: mypass" \
+  -H "cf-org: my-org" \
+  -H "cf-space: my-space" \
   -d '{
     "jsonrpc": "2.0",
-    "id": 3,
+    "id": 4,
     "method": "tools/call",
     "params": {
       "name": "run_task",
       "arguments": {
-        "appGuid": "<appGuid-from-stage_code>",
-        "dropletGuid": "<dropletGuid-from-stage_code>",
+        "appGuid": "<appGuid-from-staging>",
+        "dropletGuid": "<dropletGuid-from-staging>",
         "command": "java -cp /home/vcap/app/. Hello"
       }
     }
   }' | jq .
 ```
-
-The response contains `taskGuid`, `exitCode`, and `state`.
 
 ### get_task_logs
 
@@ -255,15 +273,20 @@ Retrieve logs from the executed task:
 curl -s https://dropship-mcp.apps.example.com/mcp \
   -H "Content-Type: application/json" \
   -H "Mcp-Session-Id: $MCP_SESSION" \
+  -H "cf-apihost: api.cf.example.com" \
+  -H "cf-username: myuser" \
+  -H "cf-password: mypass" \
+  -H "cf-org: my-org" \
+  -H "cf-space: my-space" \
   -d '{
     "jsonrpc": "2.0",
-    "id": 4,
+    "id": 5,
     "method": "tools/call",
     "params": {
       "name": "get_task_logs",
       "arguments": {
         "taskGuid": "<taskGuid-from-run_task>",
-        "appName": "<app-name-from-staging>"
+        "appGuid": "<appGuid-from-staging>"
       }
     }
   }' | jq .
@@ -271,121 +294,20 @@ curl -s https://dropship-mcp.apps.example.com/mcp \
 
 ---
 
-## 5. Sample Session Transcript
+## Available Tools
 
-Below is a sample session showing the full `stage_code` → `run_task` → `get_task_logs`
-workflow as invoked by an AI agent through Claude Code.
-
-### User Prompt
-
-> Stage and run a simple Java hello-world app through Dropship, then show me the output.
-
-### Agent calls `stage_code`
-
-The agent creates a minimal Java source file, bundles it, and stages it through
-the CF buildpack pipeline.
-
-**Tool call:**
-
-```json
-{
-  "name": "stage_code",
-  "arguments": {
-    "sourceBundle": "H4sIAAAAAAAAA+3OQQrCMBCF4d2neLsK0qSmSb2KZJq...<truncated>",
-    "buildpack": "java_buildpack"
-  }
-}
-```
-
-**Response:**
-
-```json
-{
-  "dropletGuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "appGuid": "f9e8d7c6-b5a4-3210-fedc-ba0987654321",
-  "buildpack": "java_buildpack",
-  "stagingLogs": "-----> Java Buildpack v4.67\n-----> Downloading Open JDK 21.0.2...\n       Expanding Open JDK to .java-buildpack/open_jdk_jre (1.2s)\n-----> Compiling source files...\n       BUILD SUCCESSFUL\n",
-  "durationMs": 28450,
-  "success": true,
-  "errorMessage": null
-}
-```
-
-### Agent calls `run_task`
-
-Using the `appGuid` and `dropletGuid` from staging, the agent executes the compiled
-class in an isolated Diego container.
-
-**Tool call:**
-
-```json
-{
-  "name": "run_task",
-  "arguments": {
-    "appGuid": "f9e8d7c6-b5a4-3210-fedc-ba0987654321",
-    "dropletGuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "command": "java -cp /home/vcap/app/. Hello"
-  }
-}
-```
-
-**Response:**
-
-```json
-{
-  "taskGuid": "11223344-5566-7788-99aa-bbccddeeff00",
-  "appGuid": "f9e8d7c6-b5a4-3210-fedc-ba0987654321",
-  "exitCode": 0,
-  "state": "SUCCEEDED",
-  "durationMs": 3210,
-  "memoryMb": 512,
-  "command": "java -cp /home/vcap/app/. Hello"
-}
-```
-
-### Agent calls `get_task_logs`
-
-The agent retrieves the task's stdout/stderr from Loggregator.
-
-**Tool call:**
-
-```json
-{
-  "name": "get_task_logs",
-  "arguments": {
-    "taskGuid": "11223344-5566-7788-99aa-bbccddeeff00",
-    "appName": "dropship-a1b2c3d4"
-  }
-}
-```
-
-**Response:**
-
-```json
-{
-  "taskGuid": "11223344-5566-7788-99aa-bbccddeeff00",
-  "entries": [
-    {
-      "timestamp": "2026-03-02T14:32:01.123Z",
-      "source": "stdout",
-      "message": "Hello from Dropship!"
-    },
-    {
-      "timestamp": "2026-03-02T14:32:01.456Z",
-      "source": "platform",
-      "message": "Exit status 0"
-    }
-  ],
-  "totalLines": 2,
-  "truncated": false
-}
-```
-
-### Agent Summary
-
-> The hello-world app staged successfully using `java_buildpack` (28.4s), then
-> ran in a 512 MB Diego container and completed in 3.2s with exit code 0.
-> Output: **Hello from Dropship!**
+| Tool | Purpose |
+|------|---------|
+| `test_cf_connection` | Validate CF credentials and connectivity |
+| `stage_code` | Stage a base64-encoded source bundle |
+| `stage_git_repo` | Stage from a public git repo (async) |
+| `get_build_status` | Poll async build status |
+| `run_task` | Execute a command in an isolated container |
+| `get_task_status` | Poll task completion |
+| `get_task_logs` | Retrieve stdout/stderr from Loggregator |
+| `start_app` | Start app as web process with HTTP route |
+| `get_app_status` | Poll app process state |
+| `stop_app` | Stop app and clean up route |
 
 ---
 
@@ -403,14 +325,20 @@ The agent retrieves the task's stdout/stderr from Loggregator.
 2. Restart the MCP client after saving configuration changes
 3. Check Dropship server logs for initialization errors
 
-### stage_code fails
+### Staging fails
 
 1. Verify the `sourceBundle` is a valid base64-encoded tar.gz or zip archive
 2. Check that the buildpack name matches an available system buildpack
 3. Review the `stagingLogs` in the error response for dependency resolution failures
 
-### run_task times out
+### Task times out
 
 1. Increase `timeoutSeconds` in the `run_task` call (default limit: 900s)
 2. Check the space quota — the task may be waiting for available memory
 3. Verify the command path matches the droplet's filesystem layout
+
+### App won't start
+
+1. Check `get_app_status` for error details (e.g., OOM, port binding failure)
+2. Try increasing memory via the staging step
+3. Verify the droplet contains a web process type (check `detectedCommand` from staging)

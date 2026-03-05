@@ -209,7 +209,17 @@ See [docs/deployment.md](docs/deployment.md) for detailed deployment instruction
 }
 ```
 
-See [docs/client-setup.md](docs/client-setup.md) for all client configurations and a sample session transcript.
+See [docs/client-setup.md](docs/client-setup.md) for all client configurations and curl examples.
+
+### Server Instructions (Automatic)
+
+Dropship uses the MCP protocol's `instructions` field to automatically teach
+connected AI agents how to orchestrate its tools. When any client connects, it
+receives workflow patterns, parameter threading rules, buildpack guidance, and
+error recovery strategies — no client-side rules files or skills needed.
+
+This is configured via `spring.ai.mcp.server.instructions` in `application.yml`
+and works with any MCP-compliant client.
 
 ## Configuration
 

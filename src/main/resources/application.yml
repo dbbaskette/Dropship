@@ -8,6 +8,51 @@ spring:
         type: SYNC
         annotation-scanner:
           enabled: true
+        instructions: |
+          Dropship runs code inside Cloud Foundry containers with enterprise governance.
+          Use it when you need to compile, test, or run code in an isolated environment.
+
+          CREDENTIALS: Every call requires per-user CF credentials passed via HTTP headers
+          (cf-apihost, cf-username, cf-password, cf-org, cf-space). Always call
+          test_cf_connection first to validate before staging.
+
+          WORKFLOW 1 — EPHEMERAL TASKS (compile, test, one-off commands):
+            1. stage_git_repo(repoUrl) or stage_code(sourceBundle) → returns buildId
+            2. get_build_status(buildId) → poll until complete → returns appGuid, appName, dropletGuid
+            3. run_task(appGuid, dropletGuid, command) → returns taskGuid
+            4. get_task_status(taskGuid, appGuid) → poll until SUCCEEDED or FAILED
+            5. get_task_logs(taskGuid, appGuid) → structured stdout/stderr
+
+          WORKFLOW 2 — WEB APPS (Spring Boot, Express, Flask — long-running with HTTP route):
+            1. stage_git_repo(repoUrl) or stage_code(sourceBundle) → buildId
+            2. get_build_status(buildId) → appGuid, appName, dropletGuid
+            3. start_app(appGuid, appName, dropletGuid) → returns routeUrl, routeGuid (STARTING)
+            4. get_app_status(appGuid) → poll until RUNNING
+            5. Hit routeUrl to test the app
+            6. stop_app(appGuid, routeGuid) → cleans up route and stops app
+
+          WHEN TO USE WHICH:
+          - "run tests", "compile", "execute script" → Workflow 1 (task)
+          - "start the app", "run the server", "test the endpoints" → Workflow 2 (web app)
+
+          PARAMETER THREADING: stage_git_repo/stage_code return appGuid, appName, and
+          dropletGuid. Pass these to ALL subsequent tools. Do not invent or guess GUIDs.
+
+          BUILDPACKS: java_buildpack (Java/Maven/Gradle), nodejs_buildpack (Node.js),
+          python_buildpack (Python), go_buildpack (Go), ruby_buildpack (Ruby),
+          staticfile_buildpack (HTML/JS). Pass null to auto-detect.
+
+          stage_git_repo is preferred over stage_code when source is in a git repo.
+          It clones on the server — do NOT clone locally and upload.
+
+          RESOURCE DEFAULTS: Tasks default to 512MB memory. Staging defaults to 1024MB
+          memory / 2048MB disk. Max task memory is 2048MB. Max timeout is 900 seconds.
+
+          ERROR RECOVERY:
+          - Staging fails → check staging logs in the StagingResult for buildpack errors
+          - Task fails → call get_task_logs to see stderr output
+          - App crashes → call get_app_status to see error details, try with more memory
+          - Connection fails → verify credentials with test_cf_connection
 
 cf:
   client-id: ${CF_CLIENT_ID:}
