@@ -1,6 +1,5 @@
 package com.baskette.dropship.service;
 
-import com.baskette.dropship.config.DropshipProperties;
 import org.cloudfoundry.client.v3.Metadata;
 import org.cloudfoundry.client.v3.organizations.ListOrganizationsRequest;
 import org.cloudfoundry.client.v3.organizations.ListOrganizationsResponse;
@@ -46,15 +45,11 @@ class SpaceResolverTest {
     @Captor
     private ArgumentCaptor<ListSpacesRequest> spaceRequestCaptor;
 
-    private DropshipProperties properties;
     private SpaceResolver spaceResolver;
 
     @BeforeEach
     void setUp() {
-        properties = new DropshipProperties(
-                "test-org", "test-space", "https://api.test.cf.example.com",
-                2048, 4096, 900, 512, 1024, 2048, "dropship-");
-        spaceResolver = new SpaceResolver(properties);
+        spaceResolver = new SpaceResolver();
     }
 
     @Test
@@ -80,7 +75,7 @@ class SpaceResolverTest {
                                 .build())
                         .build()));
 
-        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient))
+        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient, "test-org", "test-space"))
                 .expectNext("space-guid-456")
                 .verifyComplete();
 
@@ -100,7 +95,7 @@ class SpaceResolverTest {
                         .resources(Collections.emptyList())
                         .build()));
 
-        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient))
+        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient, "test-org", "test-space"))
                 .expectErrorSatisfies(ex -> {
                     assertThat(ex).isInstanceOf(IllegalStateException.class);
                     assertThat(ex.getMessage()).contains("Organization not found");
@@ -127,7 +122,7 @@ class SpaceResolverTest {
                         .resources(Collections.emptyList())
                         .build()));
 
-        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient))
+        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient, "test-org", "test-space"))
                 .expectErrorSatisfies(ex -> {
                     assertThat(ex).isInstanceOf(IllegalStateException.class);
                     assertThat(ex.getMessage()).contains("Space not found");
@@ -141,7 +136,7 @@ class SpaceResolverTest {
         when(organizationsV3.list(any(ListOrganizationsRequest.class)))
                 .thenReturn(Mono.error(new RuntimeException("Connection refused")));
 
-        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient))
+        StepVerifier.create(spaceResolver.resolveSpace(cloudFoundryClient, "test-org", "test-space"))
                 .expectErrorSatisfies(ex -> {
                     assertThat(ex).isInstanceOf(RuntimeException.class);
                     assertThat(ex.getMessage()).isEqualTo("Connection refused");

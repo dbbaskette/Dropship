@@ -3,58 +3,58 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Java](https://img.shields.io/badge/Java-21-orange.svg)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4-green.svg)
+![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-purple.svg)
 
 **Enterprise-governed code execution for AI agents via Cloud Foundry**
 
-Dropship is a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that lets AI agents — Claude Code, Cursor, Windsurf, or any MCP client — compile, execute, and observe code inside enterprise-managed Cloud Foundry containers. Every execution runs with UAA-federated identity, org/space quota enforcement, ASG network policies, and full CF Audit Event trails.
+## About
 
----
+AI coding agents need to compile and run code, but doing so on a developer's laptop offers no audit trail, resource governance, or credential isolation — and sending code to a vendor sandbox may violate data residency requirements. Dropship fills this gap by letting AI agents execute code inside an organization's Cloud Foundry foundation where identity, authorization, isolation, audit, network policy, and cost attribution are all platform-enforced.
 
-## The Problem
+Dropship is a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that works with any MCP client — Claude Code, Cursor, Windsurf, or custom agents. Every execution runs with UAA-federated identity, org/space quota enforcement, ASG network policies, and full CF Audit Event trails.
 
-AI coding agents execute code in one of two places, and neither satisfies enterprise requirements:
+## Key Features
 
-| Approach | Limitation |
-|---|---|
-| **Developer's local machine** | No centralized audit trail, no resource governance, no credential isolation. A prompt injection can exfiltrate `~/.ssh` or `~/.aws`. |
-| **Vendor cloud sandbox** | Code leaves the enterprise perimeter. Data residency (HIPAA, SOC 2, FedRAMP) may prohibit this. No control over network policies or service bindings. |
+- **Stage from source or git** — Upload source bundles or point to a public git repo; CF buildpacks handle compilation for Java, Node.js, Python, Go, and more
+- **Ephemeral task execution** — Run commands in isolated Garden containers that are destroyed after completion
+- **Long-running web apps** — Start staged applications as web processes with auto-provisioned HTTP routes for integration testing
+- **Structured log retrieval** — Fetch timestamped, source-separated stdout/stderr from Loggregator Log Cache
+- **Per-user credentials** — Each MCP client passes its own CF credentials via HTTP headers; no shared service account
+- **Enterprise isolation** — Every execution is governed by CF org/space quotas, ASGs, RBAC, and audit events
 
-**Dropship fills the gap:** AI agents execute code inside the organization's Cloud Foundry foundation where identity, authorization, isolation, audit, network policy, and cost attribution are all platform-enforced.
+## MCP Tools
 
----
+Dropship exposes 10 MCP tools organized into four workflows:
 
-## How It Works
+### Connection
 
-Dropship exposes three MCP tools that map to Cloud Foundry primitives:
+| Tool | Description |
+|------|-------------|
+| `test_cf_connection` | Validate CF API reachability, authentication, and org/space resolution before staging |
 
-### `stage_code`
+### Staging
 
-Upload source code and compile it through CF's buildpack pipeline. Catches dependency errors and compilation failures before execution.
+| Tool | Description |
+|------|-------------|
+| `stage_code` | Upload a base64-encoded source bundle and compile it through the CF buildpack pipeline |
+| `stage_git_repo` | Clone a public git repo on the server, build it, and stage through CF buildpacks (async — poll with `get_build_status`) |
+| `get_build_status` | Poll the status of an async `stage_git_repo` build |
 
-```
-Agent -> stage_code(source, "java_buildpack") -> CF creates ephemeral app ->
-buildpack compiles -> produces droplet -> returns droplet GUID + staging logs
-```
+### Task Execution
 
-### `run_task`
+| Tool | Description |
+|------|-------------|
+| `run_task` | Execute a command in an isolated Garden container provisioned from a staged droplet |
+| `get_task_status` | Poll task state: RUNNING, SUCCEEDED, or FAILED |
+| `get_task_logs` | Retrieve structured stdout/stderr from Loggregator Log Cache |
 
-Execute a command in an isolated Garden container provisioned from a staged droplet. Diego schedules the task to a Cell, Garden enforces namespace/cgroup/seccomp isolation and ASG network policies.
+### App Lifecycle
 
-```
-Agent -> run_task(dropletGuid, "mvn test", 512MB) -> Diego creates container ->
-command executes -> container destroyed -> returns exit code + task GUID
-```
-
-### `get_task_logs`
-
-Retrieve structured stdout/stderr from Loggregator. Logs persist independently of the container lifecycle.
-
-```
-Agent -> get_task_logs(taskGuid) -> Loggregator Log Cache ->
-returns timestamped, source-separated log entries
-```
-
----
+| Tool | Description |
+|------|-------------|
+| `start_app` | Start a staged application as a long-running web process with an auto-provisioned HTTP route |
+| `get_app_status` | Poll app process state: STARTING, RUNNING, CRASHED, or STOPPED |
+| `stop_app` | Stop a running application and clean up its route |
 
 ## Architecture
 
@@ -68,9 +68,11 @@ flowchart TB
     end
 
     subgraph dropship["DROPSHIP MCP SERVER<br/>Spring Boot 3.4 / Spring AI 1.1.2"]
-        SC["stage_code"]
-        RT["run_task"]
+        TC["test_cf_connection"]
+        SC["stage_code / stage_git_repo"]
+        RT["run_task / get_task_status"]
         GL["get_task_logs"]
+        SA["start_app / get_app_status / stop_app"]
         CFC["CF Java Client 5.16"]
     end
 
@@ -80,42 +82,91 @@ flowchart TB
         LOG["Loggregator"]
         DIEGO
         GARDEN["Garden Containers<br/><i>namespaces, cgroups, seccomp, ASGs</i>"]
+        ROUTER["GoRouter"]
     end
 
     clients -->|"MCP (Streamable HTTP)"| dropship
-    SC & RT & GL --> CFC
+    TC & SC & RT & GL & SA --> CFC
     CFC -->|"CF API v3 (UAA authenticated)"| CAPI
     CFC --> LOG
     CAPI --> DIEGO
     DIEGO --> GARDEN
     UAA --- CAPI
+    SA -.->|"route mapping"| ROUTER
+    ROUTER --> GARDEN
 ```
 
----
+### Typical Workflow
 
-## Technology Stack
+```mermaid
+sequenceDiagram
+    participant Agent as MCP Client
+    participant DS as Dropship
+    participant CF as Cloud Foundry
 
-| Component | Artifact | Version |
-|---|---|---|
-| Spring Boot | `spring-boot-starter-webflux` | 3.4.3 |
-| Spring AI | `spring-ai-bom` | 1.1.2 |
-| MCP Server | `spring-ai-starter-mcp-server-webflux` | 1.1.2 (via BOM) |
-| MCP Annotations | `org.springaicommunity:mcp-annotations` | 0.8.0 |
-| CF Client | `cloudfoundry-client-reactor` | 5.16.0.RELEASE |
-| CF Operations | `cloudfoundry-operations` | 5.16.0.RELEASE |
-| Java | OpenJDK | 21 |
+    Agent->>DS: test_cf_connection
+    DS->>CF: Validate credentials
+    CF-->>DS: OK
+    DS-->>Agent: Connected
+
+    Agent->>DS: stage_git_repo(repoUrl)
+    DS->>CF: Clone, build, stage
+    CF-->>DS: buildId
+    DS-->>Agent: buildId
+
+    Agent->>DS: get_build_status(buildId)
+    DS-->>Agent: dropletGuid, appGuid, appName
+
+    alt Run as task (ephemeral)
+        Agent->>DS: run_task(appGuid, dropletGuid, command)
+        DS->>CF: Create task container
+        CF-->>DS: taskGuid
+        DS-->>Agent: taskGuid (RUNNING)
+
+        Agent->>DS: get_task_status(taskGuid)
+        DS-->>Agent: SUCCEEDED
+
+        Agent->>DS: get_task_logs(taskGuid, appGuid)
+        DS-->>Agent: stdout/stderr entries
+    else Run as web app (long-running)
+        Agent->>DS: start_app(appGuid, appName, dropletGuid)
+        DS->>CF: Set droplet, create route, start app
+        CF-->>DS: routeUrl, routeGuid
+        DS-->>Agent: STARTING + routeUrl
+
+        Agent->>DS: get_app_status(appGuid)
+        DS-->>Agent: RUNNING
+
+        Note over Agent: Hit routeUrl to test the app
+
+        Agent->>DS: stop_app(appGuid, routeGuid)
+        DS->>CF: Stop app, delete route
+        DS-->>Agent: STOPPED
+    end
+```
+
+## Built With
+
+| Component | Version |
+|-----------|---------|
+| [Spring Boot](https://spring.io/projects/spring-boot) | 3.4.3 |
+| [Spring AI](https://docs.spring.io/spring-ai/reference/) | 1.1.2 |
+| [Spring AI MCP Server](https://docs.spring.io/spring-ai/reference/api/mcp/mcp-server-boot-starter-docs.html) | 1.1.2 (via BOM) |
+| [MCP Annotations](https://github.com/spring-ai-community/mcp-annotations) | 0.8.0 |
+| [CF Java Client](https://github.com/cloudfoundry/cf-java-client) | 5.16.0 |
+| [JGit](https://www.eclipse.org/jgit/) | 7.1.0 |
+| Java | 21 |
 
 WebFlux is used because `cf-java-client` is Reactor-based — fully reactive end-to-end.
 
----
-
-## Quick Start
+## Getting Started
 
 ### Prerequisites
 
 - Java 21 (JDK)
 - Maven 3.9+
-- A Cloud Foundry foundation with admin access (for UAA client setup)
+- A Cloud Foundry foundation with org/space access
+- CF CLI (`cf`) installed and targeted
 
 ### Build
 
@@ -127,7 +178,7 @@ mvn clean package
 
 ```bash
 cp vars.yml.example vars.yml
-# Edit vars.yml with your CF API URL, UAA credentials, and sandbox org/space
+# Edit vars.yml with your CF API URL and sandbox org/space
 cf push -f manifest.yml --vars-file vars.yml
 ```
 
@@ -160,14 +211,10 @@ See [docs/deployment.md](docs/deployment.md) for detailed deployment instruction
 
 See [docs/client-setup.md](docs/client-setup.md) for all client configurations and a sample session transcript.
 
----
-
 ## Configuration
 
-All Dropship settings are configurable via environment variables or `application.yml`:
-
 | Property | Env Variable | Default | Description |
-|---|---|---|---|
+|----------|-------------|---------|-------------|
 | `dropship.sandbox-org` | `DROPSHIP_SANDBOX_ORG` | — | CF org for agent workloads |
 | `dropship.sandbox-space` | `DROPSHIP_SANDBOX_SPACE` | — | CF space within the org |
 | `dropship.cf-api-url` | `CF_API_URL` | — | CF API endpoint |
@@ -179,9 +226,7 @@ All Dropship settings are configurable via environment variables or `application
 | `dropship.default-staging-disk-mb` | — | `2048` | Default disk for staging builds |
 | `dropship.app-name-prefix` | — | `dropship-` | Prefix for ephemeral app names |
 
-UAA credentials are set via `CF_CLIENT_ID` and `CF_CLIENT_SECRET` environment variables.
-
----
+Per-user CF credentials are passed via MCP HTTP headers (`cf-apihost`, `cf-username`, `cf-password`, `cf-org`, `cf-space`).
 
 ## Testing
 
@@ -191,7 +236,7 @@ UAA credentials are set via `CF_CLIENT_ID` and `CF_CLIENT_SECRET` environment va
 mvn test
 ```
 
-Runs 97 unit tests covering all tools, services, models, and configuration classes. Integration tests are excluded by default.
+Runs 215 unit tests covering all tools, services, models, and configuration classes. Integration tests are excluded by default.
 
 ### Integration Tests
 
@@ -201,25 +246,21 @@ Integration tests run against a real CF foundation:
 mvn verify -Pintegration
 ```
 
-Requires `CF_CLIENT_ID`, `CF_CLIENT_SECRET`, `CF_API_URL`, `DROPSHIP_SANDBOX_ORG`, and `DROPSHIP_SANDBOX_SPACE` to be set.
+Requires `CF_API_URL`, `DROPSHIP_SANDBOX_ORG`, and `DROPSHIP_SANDBOX_SPACE` to be set, plus valid CF credentials.
 
 ### End-to-End Verification
 
-A curl-based E2E test exercises the complete `stage_code` -> `run_task` -> `get_task_logs` workflow:
+A curl-based E2E test exercises the complete staging, execution, and log retrieval workflow:
 
 ```bash
 DROPSHIP_URL=https://dropship-mcp.apps.example.com/mcp ./scripts/e2e-curl-test.sh
 ```
 
-Use `--verbose` to print raw curl commands for debugging.
-
----
-
 ## Enterprise Security
 
 | Layer | Mechanism | What It Prevents |
-|---|---|---|
-| **Identity** | UAA client credentials, federated to enterprise IdP | Anonymous/unattributed execution |
+|-------|-----------|------------------|
+| **Identity** | Per-user CF credentials via MCP headers | Anonymous/unattributed execution |
 | **Authorization** | RBAC at org/space level | Unauthorized access to production |
 | **Isolation** | Garden containers (namespaces, cgroups, seccomp) | Container escape, host compromise |
 | **Network** | Application Security Groups (ASGs) | Lateral movement, data exfiltration |
@@ -228,82 +269,78 @@ Use `--verbose` to print raw curl commands for debugging.
 | **Data Residency** | Code never leaves the CF foundation | Regulatory violations (HIPAA, SOC 2, FedRAMP) |
 | **Credentials** | Service bindings via VCAP_SERVICES | Agent exfiltrating secrets |
 
----
-
-## Why Not Docker?
-
-| Concern | Docker | Dropship (CF) |
-|---|---|---|
-| Identity/auth | Docker daemon (root-equivalent) | UAA-federated RBAC |
-| Resource governance | Manual `--memory` flags | Org/space quotas enforced platform-wide |
-| Network isolation | Manual iptables | Application Security Groups (ASGs) |
-| Audit trail | Docker daemon logs (if enabled) | CF Audit Events to SIEM |
-| Credential management | Mounted `.env` files | Service bindings (VCAP_SERVICES) |
-| Multi-tenancy | Separate daemons | Org / Space / App RBAC hierarchy |
-| Scaling | Manual Swarm/Compose | Diego Auctioneer across 250+ Cells |
-| Compliance | "Trust me, it's in Docker" | SOC 2-auditable CF Audit Events |
-
----
-
 ## Project Structure
 
 ```
 src/main/java/com/baskette/dropship/
 ├── DropshipApplication.java
 ├── config/
-│   ├── CloudFoundryConfig.java           # CF client beans, UAA auth
+│   ├── CloudFoundryConfig.java           # CF client beans
 │   ├── CloudFoundryHealthCheck.java      # Startup connectivity verification
 │   ├── DropshipProperties.java           # @ConfigurationProperties
+│   ├── McpTransportConfig.java           # MCP HTTP header extraction
 │   └── SpaceResolverHealthIndicator.java # /actuator/health contributor
 ├── tool/
-│   ├── StageCodeTool.java                # @McpTool stage_code
-│   ├── RunTaskTool.java                  # @McpTool run_task
-│   └── GetTaskLogsTool.java              # @McpTool get_task_logs
+│   ├── TestConnectionTool.java           # test_cf_connection
+│   ├── StageCodeTool.java                # stage_code
+│   ├── StageGitRepoTool.java             # stage_git_repo
+│   ├── GetBuildStatusTool.java           # get_build_status
+│   ├── RunTaskTool.java                  # run_task
+│   ├── GetTaskStatusTool.java            # get_task_status
+│   ├── GetTaskLogsTool.java              # get_task_logs
+│   ├── StartAppTool.java                 # start_app
+│   ├── GetAppStatusTool.java             # get_app_status
+│   ├── StopAppTool.java                  # stop_app
+│   └── CfCredentialHelper.java           # Per-user credential extraction
 ├── model/
-│   ├── StagingResult.java                # Staging outcome record
+│   ├── AppResult.java                    # App lifecycle outcome
+│   ├── StagingResult.java                # Staging outcome
 │   ├── TaskResult.java                   # Task execution outcome
-│   └── TaskLogs.java                     # Structured log entries
+│   ├── TaskLogs.java                     # Structured log entries
+│   └── ConnectionTestResult.java         # Connection test outcome
 └── service/
-    ├── StagingService.java               # App creation, build lifecycle, log retrieval
-    ├── TaskService.java                  # Droplet assignment, task execution, polling
-    ├── LogService.java                   # Loggregator log retrieval and filtering
-    └── SpaceResolver.java               # Org/space GUID resolution at startup
+    ├── AppService.java                   # Route creation, app start/stop
+    ├── StagingService.java               # App creation, build lifecycle
+    ├── TaskService.java                  # Droplet assignment, task execution
+    ├── GitCloneService.java              # Remote git clone for stage_git_repo
+    ├── BuildTracker.java                 # Async build tracking
+    ├── LogService.java                   # Loggregator log retrieval
+    └── SpaceResolver.java               # Org/space GUID resolution
 ```
-
----
 
 ## Documentation
 
 | Document | Description |
-|---|---|
+|----------|-------------|
 | [docs/cf-setup.md](docs/cf-setup.md) | CF foundation setup: UAA client, org/space, quotas, ASGs |
 | [docs/deployment.md](docs/deployment.md) | Deployment guide with preflight checklist |
 | [docs/client-setup.md](docs/client-setup.md) | MCP client configuration and sample session |
 | [dropship.md](dropship.md) | Full design specification |
-| [PLAN.md](PLAN.md) | Phase 1 implementation plan |
-
----
 
 ## Roadmap
 
-| Phase | Focus | Status |
-|---|---|---|
-| **Phase 1: Foundation (MVP)** | Three core tools, CF integration, deployment manifest | In progress |
-| **Phase 2: Hardening** | Rate limiting, task queuing, droplet caching, metrics | Planned |
-| **Phase 3: Enterprise** | Multi-space RBAC, service binding passthrough, cost attribution | Planned |
-| **Phase 4: Worldmind** | Centurion toolkit adapter, parallel test orchestration | Planned |
+- [x] Core staging and task execution tools (`stage_code`, `run_task`, `get_task_logs`)
+- [x] Git repo staging (`stage_git_repo`, `get_build_status`)
+- [x] Task status polling (`get_task_status`)
+- [x] Connection validation (`test_cf_connection`)
+- [x] Per-user credential model via MCP headers
+- [x] Long-running web app lifecycle (`start_app`, `get_app_status`, `stop_app`)
+- [ ] Rate limiting and task queuing
+- [ ] Droplet caching across sessions
+- [ ] Metrics and observability dashboard
+- [ ] Multi-space RBAC with role-based tool access
+- [ ] Service binding passthrough
+- [ ] Cost attribution and chargeback
 
----
+## Contributing
 
-## Ecosystem Positioning
+Contributions are welcome!
 
-Corby Page's [`cloud-foundry-mcp`](https://github.com/corby-page): **"Talk to CF about your apps."** (Management plane)
-
-Dropship: **"Use CF to safely run the code your AI agents write."** (Execution plane)
-
-Complementary, not competitive.
-
----
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 

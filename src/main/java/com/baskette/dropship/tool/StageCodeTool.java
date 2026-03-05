@@ -1,14 +1,13 @@
 package com.baskette.dropship.tool;
 
-import com.baskette.dropship.config.CfClientFactory;
 import com.baskette.dropship.model.StagingResult;
 import com.baskette.dropship.service.StagingService;
-import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
-import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
+import org.springaicommunity.mcp.context.McpSyncRequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Base64;
@@ -19,11 +18,12 @@ public class StageCodeTool {
     private static final Logger log = LoggerFactory.getLogger(StageCodeTool.class);
 
     private final StagingService stagingService;
-    private final CfClientFactory cfClientFactory;
+    private final boolean skipSslValidation;
 
-    public StageCodeTool(StagingService stagingService, CfClientFactory cfClientFactory) {
+    public StageCodeTool(StagingService stagingService,
+                         @Value("${cf.skip-ssl-validation:false}") boolean skipSslValidation) {
         this.stagingService = stagingService;
-        this.cfClientFactory = cfClientFactory;
+        this.skipSslValidation = skipSslValidation;
     }
 
     @McpTool(
@@ -33,6 +33,7 @@ public class StageCodeTool {
                     + "Returns a droplet GUID for subsequent execution via run_task."
     )
     public StagingResult stageCode(
+            McpSyncRequestContext context,
             @McpToolParam(description = "Base64-encoded source bundle (tarball or zip)")
             String sourceBundle,
             @McpToolParam(description = "Buildpack hint: java_buildpack, nodejs_buildpack, python_buildpack, go_buildpack, etc.")
@@ -42,8 +43,9 @@ public class StageCodeTool {
             @McpToolParam(description = "Disk limit in MB for staging (default: 2048)")
             Integer diskMb) {
 
-        ReactorCloudFoundryClient client = cfClientFactory.getClientForCurrentSession();
-        DefaultCloudFoundryOperations operations = cfClientFactory.getOperationsForCurrentSession();
+        String org = CfCredentialHelper.requireHeader(context, CfCredentialHelper.KEY_ORG);
+        String space = CfCredentialHelper.requireHeader(context, CfCredentialHelper.KEY_SPACE);
+        CfCredentialHelper.CfClients clients = CfCredentialHelper.buildClients(context, skipSslValidation);
 
         if (sourceBundle == null || sourceBundle.isBlank()) {
             throw new IllegalArgumentException("sourceBundle must not be empty");
@@ -66,6 +68,7 @@ public class StageCodeTool {
                 memoryMb,
                 diskMb);
 
-        return stagingService.stage(decoded, buildpack, memoryMb, diskMb, client, operations).block();
+        return stagingService.stage(decoded, buildpack, memoryMb, diskMb,
+                org, space, clients.client(), clients.logCacheClient()).block();
     }
 }

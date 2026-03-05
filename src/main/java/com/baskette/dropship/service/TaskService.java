@@ -76,13 +76,60 @@ public class TaskService {
                 .map(response -> response.getId());
     }
 
+    /**
+     * Launch a task and return immediately with the task GUID (non-blocking).
+     * Use {@link #getTaskStatus} to poll for completion.
+     */
+    public Mono<TaskResult> launchTask(String appGuid, String dropletGuid, String command,
+                                        Integer memoryMb, Integer timeoutSeconds,
+                                        Map<String, String> environment,
+                                        ReactorCloudFoundryClient client) {
+        log.info("Running task: appGuid={}, dropletGuid={}, command={}",
+                appGuid, dropletGuid, command);
+
+        return setCurrentDroplet(appGuid, dropletGuid, client)
+                .then(createTask(appGuid, command, memoryMb, null, timeoutSeconds, environment, client))
+                .map(taskGuid -> new TaskResult(
+                        taskGuid, appGuid, -1, TaskResult.State.RUNNING,
+                        0, 0, command));
+    }
+
+    /**
+     * Poll task state and return result. Returns RUNNING if not yet complete.
+     */
+    public Mono<TaskResult> getTaskStatus(String taskGuid, String appGuid,
+                                           ReactorCloudFoundryClient client) {
+        return client.tasks()
+                .get(GetTaskRequest.builder().taskId(taskGuid).build())
+                .map(response -> {
+                    TaskState state = response.getState();
+                    if (state == TaskState.SUCCEEDED) {
+                        return new TaskResult(taskGuid, appGuid, 0, TaskResult.State.SUCCEEDED,
+                                0, response.getMemoryInMb() != null ? response.getMemoryInMb() : 0,
+                                response.getCommand());
+                    } else if (state == TaskState.FAILED) {
+                        return new TaskResult(taskGuid, appGuid, 1, TaskResult.State.FAILED,
+                                0, response.getMemoryInMb() != null ? response.getMemoryInMb() : 0,
+                                response.getCommand());
+                    } else {
+                        return new TaskResult(taskGuid, appGuid, -1, TaskResult.State.RUNNING,
+                                0, response.getMemoryInMb() != null ? response.getMemoryInMb() : 0,
+                                response.getCommand());
+                    }
+                });
+    }
+
+    /**
+     * Launch a task and block until completion (synchronous).
+     * Used internally by stage_git_repo auto-run-task.
+     */
     public Mono<TaskResult> runTask(String appGuid, String dropletGuid, String command,
                                      Integer memoryMb, Integer timeoutSeconds,
                                      Map<String, String> environment,
                                      ReactorCloudFoundryClient client) {
         long startTime = System.currentTimeMillis();
 
-        log.info("Running task: appGuid={}, dropletGuid={}, command={}",
+        log.info("Running task (blocking): appGuid={}, dropletGuid={}, command={}",
                 appGuid, dropletGuid, command);
 
         return setCurrentDroplet(appGuid, dropletGuid, client)

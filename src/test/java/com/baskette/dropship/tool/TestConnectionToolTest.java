@@ -48,31 +48,31 @@ class TestConnectionToolTest {
     @Test
     void missingPasswordReturnsError() {
         stubHeaders(Map.of(
-                "X-CF-ApiHost", "api.test.example.com",
-                "X-CF-Username", "testuser",
-                "X-CF-Org", "test-org",
-                "X-CF-Space", "test-space"
+                "cf-apihost", "api.test.example.com",
+                "cf-username", "testuser",
+                "cf-org", "test-org",
+                "cf-space", "test-space"
         ));
 
         ConnectionTestResult result = testConnectionTool.testConnection(requestContext);
 
         assertThat(result.success()).isFalse();
-        assertThat(result.errorMessage()).contains("Missing required header: X-CF-Password");
+        assertThat(result.errorMessage()).contains("Missing required header: cf-password");
     }
 
     @Test
     void blankHeaderReturnsError() {
         stubHeaders(Map.of(
-                "X-CF-ApiHost", "api.test.example.com",
-                "X-CF-Username", "",
-                "X-CF-Password", "testpass",
-                "X-CF-Org", "test-org",
-                "X-CF-Space", "test-space"
+                "cf-apihost", "api.test.example.com",
+                "cf-username", "",
+                "cf-password", "testpass",
+                "cf-org", "test-org",
+                "cf-space", "test-space"
         ));
 
         ConnectionTestResult result = testConnectionTool.testConnection(requestContext);
 
         assertThat(result.success()).isFalse();
-        assertThat(result.errorMessage()).contains("Missing required header: X-CF-Username");
+        assertThat(result.errorMessage()).contains("Missing required header: cf-username");
     }
 }

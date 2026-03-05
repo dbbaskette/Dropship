@@ -1,6 +1,5 @@
 package com.baskette.dropship.service;
 
-import com.baskette.dropship.config.DropshipProperties;
 import org.cloudfoundry.client.v3.organizations.ListOrganizationsRequest;
 import org.cloudfoundry.client.v3.spaces.ListSpacesRequest;
 import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
@@ -10,20 +9,11 @@ import reactor.core.publisher.Mono;
 @Service
 public class SpaceResolver {
 
-    private final DropshipProperties properties;
-
-    public SpaceResolver(DropshipProperties properties) {
-        this.properties = properties;
-    }
-
     /**
-     * Resolve the sandbox space GUID using a per-user CF client.
-     * This method is reactive and non-blocking, suitable for use within
-     * reactive chains in service methods.
+     * Resolve space GUID using explicit org/space names and a per-user CF client.
      */
-    public Mono<String> resolveSpace(ReactorCloudFoundryClient client) {
-        String orgName = properties.sandboxOrg();
-        String spaceName = properties.sandboxSpace();
+    public Mono<String> resolveSpace(ReactorCloudFoundryClient client,
+                                      String orgName, String spaceName) {
 
         return client.organizationsV3()
                 .list(ListOrganizationsRequest.builder()

@@ -2,9 +2,12 @@ package com.baskette.dropship.service;
 
 import com.baskette.dropship.model.TaskLogs;
 import com.baskette.dropship.model.TaskLogs.LogEntry;
-import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
-import org.cloudfoundry.operations.applications.ApplicationLogType;
-import org.cloudfoundry.operations.applications.ApplicationLogsRequest;
+import org.cloudfoundry.logcache.v1.Envelope;
+import org.cloudfoundry.logcache.v1.EnvelopeType;
+import org.cloudfoundry.logcache.v1.LogCacheClient;
+import org.cloudfoundry.logcache.v1.LogType;
+import org.cloudfoundry.logcache.v1.ReadRequest;
+import org.cloudfoundry.logcache.v1.ReadResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,46 +23,65 @@ public class LogService {
     private static final Logger log = LoggerFactory.getLogger(LogService.class);
     private static final int DEFAULT_MAX_LINES = 500;
 
-    public Mono<TaskLogs> getTaskLogs(String taskGuid, String appName,
+    /**
+     * Retrieve task logs via Log Cache REST API.
+     *
+     * @param taskGuid       task GUID (for tagging the result)
+     * @param appGuid        app GUID used as the Log Cache source ID
+     * @param maxLines       max log lines to return
+     * @param source         filter: "stdout", "stderr", or "all"
+     * @param logCacheClient Log Cache client for REST-based log retrieval
+     */
+    public Mono<TaskLogs> getTaskLogs(String taskGuid, String appGuid,
                                        Integer maxLines, String source,
-                                       DefaultCloudFoundryOperations operations) {
+                                       LogCacheClient logCacheClient) {
         int limit = maxLines != null ? maxLines : DEFAULT_MAX_LINES;
         String sourceFilter = source != null ? source : "all";
 
-        log.info("Retrieving logs: taskGuid={}, appName={}, maxLines={}, source={}",
-                taskGuid, appName, limit, sourceFilter);
+        log.info("Retrieving logs via Log Cache: taskGuid={}, appGuid={}, maxLines={}, source={}",
+                taskGuid, appGuid, limit, sourceFilter);
 
-        return operations.applications()
-                .logs(ApplicationLogsRequest.builder()
-                        .name(appName)
-                        .recent(true)
+        return logCacheClient.read(ReadRequest.builder()
+                        .sourceId(appGuid)
+                        .envelopeType(EnvelopeType.LOG)
+                        .descending(false)
+                        .limit(limit * 2)
                         .build())
-                .filter(appLog -> matchesSource(appLog.getLogType(), sourceFilter))
-                .map(appLog -> new LogEntry(
-                        appLog.getTimestamp() != null
-                                ? Instant.ofEpochMilli(appLog.getTimestamp() / 1_000_000)
+                .map(response -> processResponse(taskGuid, response, limit, sourceFilter));
+    }
+
+    private TaskLogs processResponse(String taskGuid, ReadResponse response,
+                                      int maxLines, String sourceFilter) {
+        List<Envelope> batch = response.getEnvelopes() != null
+                ? response.getEnvelopes().getBatch()
+                : List.of();
+
+        List<LogEntry> entries = batch.stream()
+                .filter(env -> env.getLog() != null)
+                .filter(env -> matchesSource(env.getLog().getType(), sourceFilter))
+                .map(env -> new LogEntry(
+                        env.getTimestamp() != null
+                                ? Instant.ofEpochSecond(0, env.getTimestamp())
                                 : Instant.now(),
-                        appLog.getLogType() == ApplicationLogType.ERR ? "stderr" : "stdout",
-                        appLog.getMessage()))
-                .sort(Comparator.comparing(LogEntry::timestamp))
-                .collectList()
-                .map(entries -> toTaskLogs(taskGuid, entries, limit));
-    }
+                        env.getLog().getType() == LogType.ERR ? "stderr" : "stdout",
+                        env.getLog().getPayloadAsText()))
+                .sorted(Comparator.comparing(LogEntry::timestamp))
+                .toList();
 
-    private boolean matchesSource(ApplicationLogType logType, String source) {
-        return switch (source) {
-            case "stdout" -> logType == ApplicationLogType.OUT;
-            case "stderr" -> logType == ApplicationLogType.ERR;
-            default -> true;
-        };
-    }
-
-    private TaskLogs toTaskLogs(String taskGuid, List<LogEntry> entries, int maxLines) {
         int totalLines = entries.size();
         boolean truncated = totalLines > maxLines;
         List<LogEntry> result = truncated ? entries.subList(0, maxLines) : entries;
 
-        log.info("Retrieved {} log entries for task {}, truncated={}", result.size(), taskGuid, truncated);
+        log.info("Retrieved {} log entries for task {} via Log Cache, truncated={}",
+                result.size(), taskGuid, truncated);
         return new TaskLogs(taskGuid, result, totalLines, truncated);
+    }
+
+    private boolean matchesSource(LogType logType, String source) {
+        return switch (source) {
+            case "stdout" -> logType == LogType.OUT;
+            case "stderr" -> logType == LogType.ERR;
+            default -> true;
+        };
     }
 }

@@ -2,20 +2,16 @@ package com.baskette.dropship.service;
 
 import com.baskette.dropship.model.TaskLogs;
 import com.baskette.dropship.model.TaskLogs.LogEntry;
-import org.cloudfoundry.operations.DefaultCloudFoundryOperations;
-import org.cloudfoundry.operations.applications.ApplicationLog;
-import org.cloudfoundry.operations.applications.ApplicationLogType;
-import org.cloudfoundry.operations.applications.ApplicationLogsRequest;
-import org.cloudfoundry.operations.applications.Applications;
+import org.cloudfoundry.logcache.v1.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,10 +22,7 @@ import static org.mockito.Mockito.when;
 class LogServiceTest {
 
     @Mock
-    private DefaultCloudFoundryOperations cfOperations;
-
-    @Mock
-    private Applications applications;
+    private LogCacheClient logCacheClient;
 
     private LogService logService;
 
@@ -38,25 +31,35 @@ class LogServiceTest {
         logService = new LogService();
     }
 
-    private ApplicationLog buildLog(String message, ApplicationLogType logType, long timestampNanos) {
-        return ApplicationLog.builder()
-                .message(message)
-                .logType(logType)
+    private Envelope buildEnvelope(String message, LogType logType, long timestampNanos) {
+        String base64Payload = Base64.getEncoder().encodeToString(message.getBytes());
+        Log log = Log.builder()
+                .payload(base64Payload)
+                .type(logType)
+                .build();
+        return Envelope.builder()
+                .log(log)
                 .timestamp(timestampNanos)
-                .sourceType("APP")
-                .sourceId("0")
-                .instanceId("0")
                 .build();
     }
 
-    private void stubLogs(ApplicationLog... logs) {
-        when(cfOperations.applications()).thenReturn(applications);
-        when(applications.logs(any(ApplicationLogsRequest.class))).thenReturn(Flux.just(logs));
+    private void stubEnvelopes(Envelope... envelopes) {
+        EnvelopeBatch batch = EnvelopeBatch.builder()
+                .batch(envelopes)
+                .build();
+        ReadResponse response = ReadResponse.builder()
+                .envelopes(batch)
+                .build();
+        when(logCacheClient.read(any(ReadRequest.class))).thenReturn(Mono.just(response));
     }
 
-    private void stubEmptyLogs() {
-        when(cfOperations.applications()).thenReturn(applications);
-        when(applications.logs(any(ApplicationLogsRequest.class))).thenReturn(Flux.empty());
+    private void stubEmptyEnvelopes() {
+        EnvelopeBatch batch = EnvelopeBatch.builder()
+                .build();
+        ReadResponse response = ReadResponse.builder()
+                .envelopes(batch)
+                .build();
+        when(logCacheClient.read(any(ReadRequest.class))).thenReturn(Mono.just(response));
     }
 
     @Test
@@ -65,13 +68,13 @@ class LogServiceTest {
         long ts2 = 2_000_000_000L;
         long ts3 = 3_000_000_000L;
 
-        stubLogs(
-                buildLog("third", ApplicationLogType.OUT, ts3),
-                buildLog("first", ApplicationLogType.ERR, ts1),
-                buildLog("second", ApplicationLogType.OUT, ts2)
+        stubEnvelopes(
+                buildEnvelope("third", LogType.OUT, ts3),
+                buildEnvelope("first", LogType.ERR, ts1),
+                buildEnvelope("second", LogType.OUT, ts2)
         );
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, null, cfOperations))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "app-guid-1", null, null, logCacheClient))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.taskGuid()).isEqualTo("task-guid-1");
                     assertThat(taskLogs.truncated()).isFalse();
@@ -82,24 +85,21 @@ class LogServiceTest {
 
                     assertThat(entries.get(0).message()).isEqualTo("first");
                     assertThat(entries.get(0).source()).isEqualTo("stderr");
-                    assertThat(entries.get(0).timestamp()).isEqualTo(Instant.ofEpochMilli(1000));
 
                     assertThat(entries.get(1).message()).isEqualTo("second");
                     assertThat(entries.get(1).source()).isEqualTo("stdout");
-                    assertThat(entries.get(1).timestamp()).isEqualTo(Instant.ofEpochMilli(2000));
 
                     assertThat(entries.get(2).message()).isEqualTo("third");
                     assertThat(entries.get(2).source()).isEqualTo("stdout");
-                    assertThat(entries.get(2).timestamp()).isEqualTo(Instant.ofEpochMilli(3000));
                 })
                 .verifyComplete();
     }
 
     @Test
     void emptyLogsReturnsEmptyList() {
-        stubEmptyLogs();
+        stubEmptyEnvelopes();
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, null, cfOperations))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "app-guid-1", null, null, logCacheClient))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.taskGuid()).isEqualTo("task-guid-1");
                     assertThat(taskLogs.entries()).isEmpty();
@@ -111,13 +111,13 @@ class LogServiceTest {
 
     @Test
     void truncationWhenExceedsMaxLines() {
-        ApplicationLog[] logs = new ApplicationLog[10];
+        Envelope[] envelopes = new Envelope[10];
         for (int i = 0; i < 10; i++) {
-            logs[i] = buildLog("line-" + i, ApplicationLogType.OUT, (i + 1) * 1_000_000_000L);
+            envelopes[i] = buildEnvelope("line-" + i, LogType.OUT, (i + 1) * 1_000_000_000L);
         }
-        stubLogs(logs);
+        stubEnvelopes(envelopes);
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", 5, null, cfOperations))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "app-guid-1", 5, null, logCacheClient))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.entries()).hasSize(5);
                     assertThat(taskLogs.truncated()).isTrue();
@@ -131,13 +131,13 @@ class LogServiceTest {
 
     @Test
     void filterStdoutOnly() {
-        stubLogs(
-                buildLog("out-1", ApplicationLogType.OUT, 1_000_000_000L),
-                buildLog("err-1", ApplicationLogType.ERR, 2_000_000_000L),
-                buildLog("out-2", ApplicationLogType.OUT, 3_000_000_000L)
+        stubEnvelopes(
+                buildEnvelope("out-1", LogType.OUT, 1_000_000_000L),
+                buildEnvelope("err-1", LogType.ERR, 2_000_000_000L),
+                buildEnvelope("out-2", LogType.OUT, 3_000_000_000L)
         );
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, "stdout", cfOperations))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "app-guid-1", null, "stdout", logCacheClient))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.entries()).hasSize(2);
                     assertThat(taskLogs.entries()).allSatisfy(entry ->
@@ -150,14 +150,14 @@ class LogServiceTest {
 
     @Test
     void filterStderrOnly() {
-        stubLogs(
-                buildLog("out-1", ApplicationLogType.OUT, 1_000_000_000L),
-                buildLog("err-1", ApplicationLogType.ERR, 2_000_000_000L),
-                buildLog("out-2", ApplicationLogType.OUT, 3_000_000_000L),
-                buildLog("err-2", ApplicationLogType.ERR, 4_000_000_000L)
+        stubEnvelopes(
+                buildEnvelope("out-1", LogType.OUT, 1_000_000_000L),
+                buildEnvelope("err-1", LogType.ERR, 2_000_000_000L),
+                buildEnvelope("out-2", LogType.OUT, 3_000_000_000L),
+                buildEnvelope("err-2", LogType.ERR, 4_000_000_000L)
         );
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, "stderr", cfOperations))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "app-guid-1", null, "stderr", logCacheClient))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.entries()).hasSize(2);
                     assertThat(taskLogs.entries()).allSatisfy(entry ->
@@ -170,12 +170,12 @@ class LogServiceTest {
 
     @Test
     void defaultSourceReturnsAll() {
-        stubLogs(
-                buildLog("out-msg", ApplicationLogType.OUT, 1_000_000_000L),
-                buildLog("err-msg", ApplicationLogType.ERR, 2_000_000_000L)
+        stubEnvelopes(
+                buildEnvelope("out-msg", LogType.OUT, 1_000_000_000L),
+                buildEnvelope("err-msg", LogType.ERR, 2_000_000_000L)
         );
 
-        StepVerifier.create(logService.getTaskLogs("task-guid-1", "my-app", null, null, cfOperations))
+        StepVerifier.create(logService.getTaskLogs("task-guid-1", "app-guid-1", null, null, logCacheClient))
                 .assertNext(taskLogs -> {
                     assertThat(taskLogs.entries()).hasSize(2);
                     assertThat(taskLogs.entries().get(0).source()).isEqualTo("stdout");

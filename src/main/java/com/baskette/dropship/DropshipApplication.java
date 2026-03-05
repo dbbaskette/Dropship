@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 
 @SpringBootApplication
 @EnableConfigurationProperties(DropshipProperties.class)
+@org.springframework.scheduling.annotation.EnableAsync
 public class DropshipApplication {
 
     public static void main(String[] args) {

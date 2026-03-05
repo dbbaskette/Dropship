@@ -1,8 +1,8 @@
 ---
 applications:
   - name: dropship-mcp
-    memory: 1G
-    disk_quota: 1G
+    memory: 2G
+    disk_quota: 2G
     instances: 1
     buildpacks:
       - java_buildpack_offline
@@ -13,6 +13,7 @@ applications:
 
     env:
       JBP_CONFIG_OPEN_JDK_JRE: '{ jre: { version: 21.+ } }'
+      JAVA_OPTS: '-XX:MaxDirectMemorySize=256M'
       SPRING_PROFILES_ACTIVE: cloud
       # ------------------------------------------------------------------
       # All CF configuration is optional at deploy time.

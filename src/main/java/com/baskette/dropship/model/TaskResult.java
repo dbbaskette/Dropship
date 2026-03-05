@@ -11,6 +11,6 @@ public record TaskResult(
 ) {
 
     public enum State {
-        SUCCEEDED, FAILED
+        RUNNING, SUCCEEDED, FAILED
     }
 }

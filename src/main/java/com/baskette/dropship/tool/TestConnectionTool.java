@@ -3,17 +3,13 @@ package com.baskette.dropship.tool;
 import com.baskette.dropship.model.ConnectionTestResult;
 import org.cloudfoundry.client.v3.organizations.ListOrganizationsRequest;
 import org.cloudfoundry.client.v3.spaces.ListSpacesRequest;
-import org.cloudfoundry.reactor.DefaultConnectionContext;
 import org.cloudfoundry.reactor.client.ReactorCloudFoundryClient;
-import org.cloudfoundry.reactor.tokenprovider.PasswordGrantTokenProvider;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.context.McpSyncRequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
-import java.net.URI;
 
 @Service
 public class TestConnectionTool {
@@ -35,44 +31,27 @@ public class TestConnectionTool {
     public ConnectionTestResult testConnection(McpSyncRequestContext context) {
         String apiHost;
         String username;
-        String password;
         String org;
         String space;
 
         try {
-            apiHost = requireHeader(context, "X-CF-ApiHost");
-            username = requireHeader(context, "X-CF-Username");
-            password = requireHeader(context, "X-CF-Password");
-            org = requireHeader(context, "X-CF-Org");
-            space = requireHeader(context, "X-CF-Space");
+            apiHost = CfCredentialHelper.requireHeader(context, CfCredentialHelper.KEY_API_HOST);
+            username = CfCredentialHelper.requireHeader(context, CfCredentialHelper.KEY_USERNAME);
+            CfCredentialHelper.requireHeader(context, CfCredentialHelper.KEY_PASSWORD);
+            org = CfCredentialHelper.requireHeader(context, CfCredentialHelper.KEY_ORG);
+            space = CfCredentialHelper.requireHeader(context, CfCredentialHelper.KEY_SPACE);
         } catch (Exception e) {
             log.warn("test_cf_connection failed: {}", e.getMessage());
             return new ConnectionTestResult(false, null, null, null, null, null, e.getMessage());
         }
 
-        String host = URI.create(apiHost.startsWith("http") ? apiHost : "https://" + apiHost).getHost();
-        if (host == null) {
-            host = apiHost;
-        }
+        String host = CfCredentialHelper.extractHost(apiHost);
 
         log.info("test_cf_connection invoked: apiHost={}, username={}, org={}, space={}",
                 host, username, org, space);
 
         try {
-            DefaultConnectionContext connectionContext = DefaultConnectionContext.builder()
-                    .apiHost(host)
-                    .skipSslValidation(skipSslValidation)
-                    .build();
-
-            PasswordGrantTokenProvider tokenProvider = PasswordGrantTokenProvider.builder()
-                    .username(username)
-                    .password(password)
-                    .build();
-
-            ReactorCloudFoundryClient client = ReactorCloudFoundryClient.builder()
-                    .connectionContext(connectionContext)
-                    .tokenProvider(tokenProvider)
-                    .build();
+            ReactorCloudFoundryClient client = CfCredentialHelper.buildClient(context, skipSslValidation);
 
             // Resolve org
             var orgResponse = client.organizationsV3()
@@ -106,13 +85,5 @@ public class TestConnectionTool {
             log.warn("test_cf_connection failed: {}", e.getMessage());
             return new ConnectionTestResult(false, host, username, org, space, null, e.getMessage());
         }
-    }
-
-    private String requireHeader(McpSyncRequestContext context, String headerName) {
-        Object value = context.transportContext().get(headerName);
-        if (value == null || value.toString().isBlank()) {
-            throw new IllegalArgumentException("Missing required header: " + headerName);
-        }
-        return value.toString();
     }
 }
